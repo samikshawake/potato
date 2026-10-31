@@ -46,6 +46,7 @@ import { queryLocalAssistant, AssistantMessage } from '../services/assistantEngi
 import { llamaClient } from '../../../src/ml/llamaClient';
 import {
   initGmailAuth,
+  signInWithGoogleBasic,
   signInWithGoogleForGmail,
   getGmailAccessToken,
   disconnectGmailAuth,
@@ -587,9 +588,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const signInWithGoogle = async () => {
     try {
-      const { user: gUser, accessToken } = await signInWithGoogleForGmail();
-      setGmailConnected(true);
-      setGmailEmail(gUser.email || null);
+      const { user: gUser, accessToken } = await signInWithGoogleBasic();
 
       const res = await fetch('/api/auth/google', {
         method: 'POST',
