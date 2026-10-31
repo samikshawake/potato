@@ -725,8 +725,8 @@
       "accounts": [
         {
           "id": "acc_hdfc_01",
-          "name": "Primary Salary",
-          "bankName": "HDFC Bank",
+          "name": "Salary & UPI",
+          "bankName": "Primary Account",
           "accountNumberMasked": "•••• 4312",
           "balance": 38420,
           "type": "SAVINGS",
@@ -735,8 +735,8 @@
         },
         {
           "id": "acc_sbi_02",
-          "name": "Emergency Savings",
-          "bankName": "SBI Bank",
+          "name": "Savings Reserve",
+          "bankName": "Savings Account",
           "accountNumberMasked": "•••• 8821",
           "balance": 9900,
           "type": "SAVINGS",
@@ -827,7 +827,84 @@
       },
       "reviewedAnomalies": {},
       "cancelledRecurringIds": [],
-      "updatedAt": "2026-10-31T13:30:44.908Z"
+      "updatedAt": "2026-10-31T16:56:23.562Z",
+      "startingSalary": 85000,
+      "pocketMoney": 20000,
+      "customCategories": [],
+      "refundItems": [
+        {
+          "id": "ref_usr_1793465783562",
+          "merchant": "Flipkart",
+          "title": "Order Refund",
+          "amount": 1299,
+          "initiatedDate": "2026-10-31",
+          "expectedByDate": "2026-11-05",
+          "status": "PENDING"
+        },
+        {
+          "id": "ref_demo_01",
+          "merchant": "Swiggy Instamart",
+          "title": "Cancelled Order Refund #SWG-8921",
+          "amount": 640,
+          "initiatedDate": "2026-10-28",
+          "expectedByDate": "2026-11-03",
+          "status": "PENDING",
+          "sourceEmailSubject": "Refund of ₹640 initiated for your cancelled Instamart order"
+        },
+        {
+          "id": "ref_demo_02",
+          "merchant": "IRCTC Rail Connect",
+          "title": "Waitlisted Ticket Auto-Reversal",
+          "amount": 1480,
+          "initiatedDate": "2026-10-22",
+          "expectedByDate": "2026-10-27",
+          "status": "CREDITED",
+          "sourceEmailSubject": "IRCTC e-Ticket Refund Processed"
+        }
+      ],
+      "warrantyItems": [
+        {
+          "id": "war_demo_01",
+          "productName": "Sony WF-C700N Wireless Earbuds",
+          "merchant": "Amazon India",
+          "purchaseDate": "2026-10-24",
+          "amount": 7990,
+          "returnWindowEnds": "2026-11-03",
+          "warrantyExpires": "2027-10-24",
+          "invoiceRef": "IN-AMZ-408-9921"
+        }
+      ],
+      "priceCreepAlerts": [
+        {
+          "id": "pc_demo_01",
+          "serviceName": "Netflix Entertainment Services",
+          "previousAmount": 499,
+          "newAmount": 649,
+          "detectedDate": "2026-10-10",
+          "alertType": "PRICE_HIKE",
+          "note": "Monthly auto-debit rose by ₹150 (+30%) compared to September."
+        },
+        {
+          "id": "pc_demo_02",
+          "serviceName": "Adobe Creative Cloud Trial",
+          "previousAmount": 0,
+          "newAmount": 1999,
+          "detectedDate": "2026-10-30",
+          "alertType": "FREE_TRIAL_ENDING",
+          "note": "Free trial converts to ₹1,999/mo auto-debit in 2 days."
+        }
+      ],
+      "splitItems": [
+        {
+          "id": "spl_demo_01",
+          "title": "Weekend Dinner at Truffles",
+          "friendName": "Rohan",
+          "totalBillAmount": 1860,
+          "owedToYouAmount": 930,
+          "date": "2026-10-27",
+          "status": "PENDING"
+        }
+      ]
     }
   },
   "erasureReceipts": []

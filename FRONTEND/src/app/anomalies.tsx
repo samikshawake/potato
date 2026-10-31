@@ -60,17 +60,6 @@ export default function AnomaliesScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Banner Explaining Anomaly Detection vs Fraud */}
-        <View style={styles.infoBanner}>
-          <AlertTriangle size={20} color="#D97706" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.infoTitle}>Statistical Variance Detection</Text>
-            <Text style={styles.infoText}>
-              We flag transactions that exceed your category baseline to help you catch unexpected bill increases or large one-off expenses. These are not assumed to be fraud.
-            </Text>
-          </View>
-        </View>
-
         {anomalies.map((item) => (
           <View key={item.id} style={styles.card}>
             <View style={styles.cardHeader}>

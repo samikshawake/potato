@@ -1,4 +1,4 @@
-import type { TransactionCategory } from '../types/finance.ts';
+import type { PresetTransactionCategory, TransactionCategory } from '../types/finance.ts';
 import { THEME } from './theme.ts';
 
 export interface CategoryMeta {
@@ -8,7 +8,44 @@ export interface CategoryMeta {
   isEssential: boolean;
 }
 
-export const CATEGORIES_META: Record<TransactionCategory, CategoryMeta> = {
+export const CUSTOM_CATEGORY_PALETTE = [
+  '#7654E8',
+  '#F97316',
+  '#0EA5E9',
+  '#EC4899',
+  '#10B981',
+  '#8B5CF6',
+  '#EAB308',
+  '#14B8A6',
+];
+
+export const DEFAULT_EXPENSE_CATEGORIES: PresetTransactionCategory[] = [
+  'Food',
+  'Rent',
+  'Shopping',
+  'Travel',
+  'Bills',
+  'Entertainment',
+  'Healthcare',
+  'Investments',
+  'Other',
+];
+
+export const DEFAULT_ALL_CATEGORIES: PresetTransactionCategory[] = [
+  'Food',
+  'Rent',
+  'Shopping',
+  'Travel',
+  'Bills',
+  'Entertainment',
+  'Healthcare',
+  'Investments',
+  'Salary',
+  'Pocket Money',
+  'Other',
+];
+
+export const CATEGORIES_META: Record<string, CategoryMeta> = {
   Food: {
     name: 'Food',
     color: THEME.colors.category.Food,
@@ -51,6 +88,12 @@ export const CATEGORIES_META: Record<TransactionCategory, CategoryMeta> = {
     iconName: 'briefcase',
     isEssential: true,
   },
+  'Pocket Money': {
+    name: 'Pocket Money',
+    color: '#10B981',
+    iconName: 'briefcase',
+    isEssential: false,
+  },
   Investments: {
     name: 'Investments',
     color: THEME.colors.category.Investments,
@@ -70,3 +113,31 @@ export const CATEGORIES_META: Record<TransactionCategory, CategoryMeta> = {
     isEssential: false,
   },
 };
+
+export function getCategoryMeta(
+  category: string,
+  customColors?: Record<string, string>
+): CategoryMeta {
+  if (CATEGORIES_META[category]) {
+    return CATEGORIES_META[category];
+  }
+  const overrideColor = customColors?.[category];
+  if (overrideColor) {
+    return {
+      name: category,
+      color: overrideColor,
+      iconName: 'tag',
+      isEssential: false,
+    };
+  }
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) {
+    hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
+  }
+  return {
+    name: category,
+    color: CUSTOM_CATEGORY_PALETTE[hash % CUSTOM_CATEGORY_PALETTE.length],
+    iconName: 'tag',
+    isEssential: false,
+  };
+}

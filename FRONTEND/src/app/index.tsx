@@ -14,15 +14,11 @@ import {
   Calculator,
   Repeat,
   AlertTriangle,
-  Award,
   ChevronRight,
   Plus,
   X,
+  Mail,
   Sparkles,
-  UploadCloud,
-  FileSpreadsheet,
-  FileText,
-  Building2,
 } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import { useFinance } from '../context/FinanceContext';
@@ -45,30 +41,41 @@ export default function HomeScreen() {
     accounts,
     goals,
     anomalies,
+    startingSalary,
+    pocketMoney,
     totalIncome,
     totalExpenses,
     totalBalance,
     categorySpending,
+    availableCategories,
     insights,
     totalRecurringMonthly,
     lastCategoryPropagationNotice,
     clearCategoryNotice,
     addTransaction,
     updateTransactionCategory,
+    updateIncomeConfig,
+    addCustomCategory,
     contributeToGoal,
+    gmailConnected,
+    refundItems,
+    priceCreepAlerts,
   } = useFinance();
 
   const [activeBalanceTab, setActiveBalanceTab] = useState<'Overview' | 'Transactions' | 'Goals'>('Overview');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showStatementModal, setShowStatementModal] = useState(false);
+  const [selectedChartCategory, setSelectedChartCategory] = useState<string | null>(null);
 
   // New Transaction Form State
   const [newTitle, setNewTitle] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [newCategory, setNewCategory] = useState<TransactionCategory>('Food');
   const [newType, setNewType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
-  const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>('UPI');
+  const [newPaymentMethod] = useState<PaymentMethod>('UPI');
+  const [addingCustomCat, setAddingCustomCat] = useState(false);
+  const [customCatInput, setCustomCatInput] = useState('');
 
   const handleCreateTransaction = () => {
     const parsedAmount = parseFloat(newAmount);
@@ -82,13 +89,22 @@ export default function HomeScreen() {
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       paymentMethod: newPaymentMethod,
-      accountId: accounts[0]?.id || 'acc_hdfc_01',
+      accountId: accounts[0]?.id || 'acc_primary_01',
       merchant: newTitle.trim(),
     });
 
     setNewTitle('');
     setNewAmount('');
     setShowAddModal(false);
+  };
+
+  const handleSaveCustomCategory = async () => {
+    const trimmed = customCatInput.trim();
+    if (!trimmed) return;
+    await addCustomCategory(trimmed);
+    setNewCategory(trimmed);
+    setCustomCatInput('');
+    setAddingCustomCat(false);
   };
 
   const handleNavChange = (tab: NavTab) => {
@@ -126,7 +142,16 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Balance Card Section */}
+        {/* Total Income (Starting Salary + Pocket Money) minus Expenses */}
+        <IncomeExpenseCard
+          startingSalary={startingSalary}
+          pocketMoney={pocketMoney}
+          income={totalIncome}
+          expenses={totalExpenses}
+          onSaveIncome={updateIncomeConfig}
+        />
+
+        {/* Total Balance Shown Below */}
         <BalanceCard
           balance={totalBalance}
           accounts={accounts}
@@ -136,17 +161,9 @@ export default function HomeScreen() {
             if (tab === 'Transactions') router.push('/transactions');
             if (tab === 'Goals') router.push('/goals');
           }}
-          onPressCard={() => router.push('/settings')}
         />
 
-        {/* Total Income & Expense Two Compact Cards */}
-        <IncomeExpenseCard
-          income={totalIncome}
-          expenses={totalExpenses}
-          dateRangeLabel="October 2026"
-        />
-
-        {/* Upload Bank Statement & Offline Document Import (New Feature) */}
+        {/* Direct Gmail Sync & Statement Card (Clean, zero comments below) */}
         <View style={styles.uploadCardContainer}>
           <TouchableOpacity
             style={styles.uploadHeroCard}
@@ -155,34 +172,12 @@ export default function HomeScreen() {
           >
             <View style={styles.uploadHeroHeader}>
               <View style={styles.uploadIconWrap}>
-                <UploadCloud size={20} color={THEME.colors.primary} />
+                <Mail size={20} color={THEME.colors.primary} />
               </View>
-              <View style={{ flex: 1 }}>
-                <View style={styles.uploadTitleRow}>
-                  <Text style={styles.uploadTitle}>Upload Bank Statement</Text>
-                  <View style={styles.offlinePillBadge}>
-                    <Text style={styles.offlinePillText}>100% On-Device</Text>
-                  </View>
-                </View>
-                <Text style={styles.uploadSub}>
-                  Upload HDFC, SBI, ICICI CSV statements or scan UPI SMS notifications locally.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.uploadQuickButtonsRow}>
-              <View style={styles.uploadOptionPill}>
-                <FileSpreadsheet size={12} color={THEME.colors.primary} />
-                <Text style={styles.uploadOptionText}>Upload CSV / PDF</Text>
-              </View>
-              <View style={styles.uploadOptionPill}>
-                <Building2 size={12} color="#D97706" />
-                <Text style={[styles.uploadOptionText, { color: '#B45309' }]}>HDFC / SBI Sample</Text>
-              </View>
-              <View style={styles.uploadOptionPill}>
-                <Sparkles size={12} color={THEME.colors.success} />
-                <Text style={[styles.uploadOptionText, { color: THEME.colors.success }]}>Sync UPI SMS</Text>
-              </View>
+              <Text style={styles.uploadTitle}>
+                {gmailConnected ? 'Sync Gmail Inbox' : 'Connect Gmail & Sync'}
+              </Text>
+              <ChevronRight size={18} color={THEME.colors.primary} />
             </View>
           </TouchableOpacity>
         </View>
@@ -197,8 +192,7 @@ export default function HomeScreen() {
             <View style={[styles.shortcutIcon, { backgroundColor: '#EDE9FE' }]}>
               <Calculator size={18} color={THEME.colors.primary} />
             </View>
-            <Text style={styles.shortcutTitle}>Purchase Simulator</Text>
-            <Text style={styles.shortcutSubtitle}>Can I afford a laptop?</Text>
+            <Text style={styles.shortcutTitle}>Simulator</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -209,9 +203,24 @@ export default function HomeScreen() {
             <View style={[styles.shortcutIcon, { backgroundColor: '#E8F8F0' }]}>
               <Repeat size={18} color={THEME.colors.success} />
             </View>
-            <Text style={styles.shortcutTitle}>Recurring Bills</Text>
+            <Text style={styles.shortcutTitle}>Recurring</Text>
             <Text style={styles.shortcutSubtitle}>
-              {formatINR(totalRecurringMonthly)}/mo committed
+              {formatINR(totalRecurringMonthly)}/mo
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={() => router.push('/smart-radar')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.shortcutIcon, { backgroundColor: '#FEF6EC' }]}>
+              <Sparkles size={18} color={THEME.colors.warning} />
+            </View>
+            <Text style={styles.shortcutTitle}>Smart Radar</Text>
+            <Text style={styles.shortcutSubtitle}>
+              {refundItems.filter((r) => r.status === 'PENDING').length + priceCreepAlerts.length}{' '}
+              active
             </Text>
           </TouchableOpacity>
         </View>
@@ -226,22 +235,26 @@ export default function HomeScreen() {
             <View style={styles.anomalyLeft}>
               <AlertTriangle size={16} color={THEME.colors.warning} />
               <Text style={styles.anomalyText}>
-                {pendingAnomaliesCount} unusual transaction flagged for review
+                {pendingAnomaliesCount} unusual transaction flagged
               </Text>
             </View>
             <ChevronRight size={16} color={THEME.colors.warning} />
           </TouchableOpacity>
         )}
 
-        {/* Spending Donut Breakdown with Mascot in Center */}
+        {/* Spending Donut Breakdown with Interactive Category Selection */}
         <SpendingDonutChart
           totalSpent={totalExpenses}
           budgetTotal={totalIncome}
           categories={categorySpending}
           title="Spendings & Goals"
+          selectedCategory={selectedChartCategory}
+          onSelectCategory={(cat) =>
+            setSelectedChartCategory((prev) => (prev === cat ? null : cat))
+          }
         />
 
-        {/* AI Insight Card */}
+        {/* Insight Card */}
         {insights.length > 0 && (
           <InsightCard
             insight={insights[0]}
@@ -307,7 +320,7 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Transaction Breakdown</Text>
+              <Text style={styles.modalTitle}>Transaction Details</Text>
               <TouchableOpacity
                 onPress={() => setSelectedTx(null)}
                 style={styles.closeBtn}
@@ -340,27 +353,13 @@ export default function HomeScreen() {
                   <Text style={styles.detailValue}>{selectedTx.category}</Text>
                 </View>
                 <View style={{ gap: 6 }}>
-                  <Text style={styles.notesLabel}>
-                    Correct Category (Auto-applies to similar merchant rows)
-                  </Text>
+                  <Text style={styles.notesLabel}>Change Category</Text>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ gap: 6 }}
                   >
-                    {(
-                      [
-                        'Food',
-                        'Rent',
-                        'Shopping',
-                        'Travel',
-                        'Bills',
-                        'Entertainment',
-                        'Salary',
-                        'Healthcare',
-                        'Other',
-                      ] as TransactionCategory[]
-                    ).map((cat) => (
+                    {availableCategories.map((cat) => (
                       <TouchableOpacity
                         key={cat}
                         style={[
@@ -408,12 +407,6 @@ export default function HomeScreen() {
                   <Text style={styles.detailLabel}>Payment Method</Text>
                   <Text style={styles.detailValue}>{selectedTx.paymentMethod}</Text>
                 </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Storage Mode</Text>
-                  <Text style={[styles.detailValue, { color: THEME.colors.success }]}>
-                    Local SQLite / On-Device
-                  </Text>
-                </View>
 
                 {selectedTx.notes && (
                   <View style={styles.detailNotes}>
@@ -437,7 +430,7 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Record Local Transaction</Text>
+              <Text style={styles.modalTitle}>Add Transaction</Text>
               <TouchableOpacity
                 onPress={() => setShowAddModal(false)}
                 style={styles.closeBtn}
@@ -468,7 +461,10 @@ export default function HomeScreen() {
                   styles.typePill,
                   newType === 'INCOME' && styles.typePillIncomeActive,
                 ]}
-                onPress={() => setNewType('INCOME')}
+                onPress={() => {
+                  setNewType('INCOME');
+                  setNewCategory('Pocket Money');
+                }}
               >
                 <Text
                   style={[
@@ -483,7 +479,7 @@ export default function HomeScreen() {
 
             <TextInput
               style={styles.inputField}
-              placeholder="Description (e.g. Swiggy Lunch, BESCOM bill)"
+              placeholder="Description (e.g. Swiggy Lunch, Pocket Money)"
               placeholderTextColor={THEME.colors.textMuted}
               value={newTitle}
               onChangeText={setNewTitle}
@@ -498,26 +494,42 @@ export default function HomeScreen() {
               onChangeText={setNewAmount}
             />
 
-            {/* Category Chips */}
-            <Text style={styles.inputLabel}>Category</Text>
+            {/* Category Chips + Custom Category Creator */}
+            <View style={styles.catHeaderRow}>
+              <Text style={styles.inputLabel}>Category</Text>
+              <TouchableOpacity
+                onPress={() => setAddingCustomCat((v) => !v)}
+                style={styles.newCatToggleBtn}
+              >
+                <Plus size={12} color={THEME.colors.primary} />
+                <Text style={styles.newCatToggleText}>Custom</Text>
+              </TouchableOpacity>
+            </View>
+
+            {addingCustomCat && (
+              <View style={styles.customCatRow}>
+                <TextInput
+                  style={[styles.inputField, { flex: 1, marginBottom: 0, paddingVertical: 8 }]}
+                  placeholder="New category name"
+                  placeholderTextColor={THEME.colors.textMuted}
+                  value={customCatInput}
+                  onChangeText={setCustomCatInput}
+                />
+                <TouchableOpacity
+                  style={styles.saveCustomCatBtn}
+                  onPress={handleSaveCustomCategory}
+                >
+                  <Text style={styles.saveCustomCatText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoryScroll}
             >
-              {(
-                [
-                  'Food',
-                  'Rent',
-                  'Shopping',
-                  'Travel',
-                  'Bills',
-                  'Entertainment',
-                  'Salary',
-                  'Healthcare',
-                  'Other',
-                ] as TransactionCategory[]
-              ).map((cat) => (
+              {availableCategories.map((cat) => (
                 <TouchableOpacity
                   key={cat}
                   style={[
@@ -542,13 +554,13 @@ export default function HomeScreen() {
               style={styles.submitBtn}
               onPress={handleCreateTransaction}
             >
-              <Text style={styles.submitBtnText}>Save Offline Transaction</Text>
+              <Text style={styles.submitBtnText}>Save Transaction</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Offline Bank Statement Importer Modal */}
+      {/* Bank Statement Importer Modal */}
       <StatementUploadModal
         visible={showStatementModal}
         onClose={() => setShowStatementModal(false)}
@@ -579,16 +591,15 @@ const styles = StyleSheet.create({
   uploadHeroCard: {
     backgroundColor: THEME.colors.card,
     borderRadius: THEME.borderRadius.xl,
-    padding: THEME.spacing.base,
+    paddingHorizontal: THEME.spacing.base,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: THEME.colors.border,
-    borderLeftWidth: 4,
-    borderLeftColor: THEME.colors.primary,
     ...THEME.shadows.card,
   },
   uploadHeroHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: THEME.spacing.md,
   },
   uploadIconWrap: {
@@ -598,59 +609,12 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.lavenderLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
-  },
-  uploadTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
   },
   uploadTitle: {
+    flex: 1,
     fontSize: THEME.typography.sizes.sm,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-  },
-  offlinePillBadge: {
-    backgroundColor: '#E8F8F0',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: THEME.borderRadius.full,
-  },
-  offlinePillText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: THEME.colors.success,
-  },
-  uploadSub: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    lineHeight: 16,
-  },
-  uploadQuickButtonsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: THEME.spacing.md,
-    paddingTop: THEME.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderLight,
-  },
-  uploadOptionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: THEME.colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: THEME.borderRadius.full,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-  },
-  uploadOptionText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: THEME.colors.primary,
   },
   shortcutRow: {
     flexDirection: 'row',
@@ -851,11 +815,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.colors.border,
   },
+  catHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
   inputLabel: {
     fontSize: THEME.typography.sizes.xs,
     fontWeight: '700',
     color: THEME.colors.textSecondary,
-    marginBottom: 6,
+  },
+  newCatToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: THEME.colors.lavenderLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: THEME.borderRadius.full,
+  },
+  newCatToggleText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: THEME.colors.primary,
+  },
+  customCatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: THEME.spacing.sm,
+  },
+  saveCustomCatBtn: {
+    backgroundColor: THEME.colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: THEME.borderRadius.md,
+  },
+  saveCustomCatText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFF',
   },
   categoryScroll: {
     gap: 8,

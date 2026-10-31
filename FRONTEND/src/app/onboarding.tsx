@@ -20,21 +20,21 @@ export default function OnboardingScreen() {
     {
       title: 'Understand Where Your Money Goes',
       description:
-        'Categorize UPI, NEFT, and card spends automatically with zero cloud tracking. Keep your full financial history right on your device.',
+        'Categorize UPI, NEFT, and card spends clearly across customizable categories.',
       icon: <PieChart size={32} color={THEME.colors.primary} />,
       mood: 'cool' as const,
     },
     {
       title: 'Simulate Big Purchases Before Buying',
       description:
-        'Ask questions like "Can I afford a laptop for ₹50,000 next month?" and get clear, math-backed feasibility scenarios.',
+        'Test upcoming purchases against your income, recurring bills, and safety reserve.',
       icon: <Calculator size={32} color={THEME.colors.primary} />,
       mood: 'happy' as const,
     },
     {
-      title: 'Explainable Insights, 100% Offline',
+      title: 'Clear & Transparent Insights',
       description:
-        'No mysterious black-box algorithms. Every recommendation shows the exact transactions and formula used to calculate it.',
+        'Track your starting salary, pocket money, expenses, and total balance at a glance.',
       icon: <ShieldCheck size={32} color={THEME.colors.primary} />,
       mood: 'celebrate' as const,
     },
@@ -95,13 +95,6 @@ export default function OnboardingScreen() {
       </View>
 
       <View style={styles.footer}>
-        <View style={styles.privacyNote}>
-          <ShieldCheck size={14} color={THEME.colors.success} />
-          <Text style={styles.privacyText}>
-            Your financial data stays on your device.
-          </Text>
-        </View>
-
         <TouchableOpacity
           style={styles.nextBtn}
           onPress={handleNext}

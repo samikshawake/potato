@@ -107,5 +107,8 @@ export const detectUnusualTransactions = (transactions: Transaction[]): AnomalyI
     }
   });
 
-  return anomalies;
+  // Sort anomalies by amount descending and return only the transaction of highest amount
+  if (anomalies.length === 0) return [];
+  anomalies.sort((a, b) => b.amount - a.amount);
+  return [anomalies[0]];
 };

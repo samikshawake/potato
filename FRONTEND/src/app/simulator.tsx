@@ -11,12 +11,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  Calculator,
-  Shield,
-  Sliders,
   Sparkles,
   HelpCircle,
   TrendingUp,
+  Clock,
 } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import { useFinance } from '../context/FinanceContext';
@@ -24,19 +22,17 @@ import { simulatePurchaseScenarios } from '../services/simulator';
 import { PurchaseScenarioCard } from '../components/PurchaseScenarioCard';
 import { BottomNavigation, NavTab } from '../components/BottomNavigation';
 import { PurchasePriority } from '../types/finance';
-import { llamaClient } from '../../../src/ml/llamaClient';
 
 export default function SimulatorScreen() {
   const router = useRouter();
   const {
     transactions,
+    totalIncome,
     totalBalance,
     recurring,
     cancelledRecurringIds,
     toggleRecurringCancel,
-    modelStatus,
-    loadShortHistoryTestMode,
-    resetDemoData,
+    parsePurchasePlanOnline,
   } = useFinance();
 
   // User input states
@@ -46,29 +42,29 @@ export default function SimulatorScreen() {
   const [reserveFloor, setReserveFloor] = useState('15000');
   const [addedMonthlyEmi, setAddedMonthlyEmi] = useState('0');
   const [planPrompt, setPlanPrompt] = useState('');
-  const [planTokenMeta, setPlanTokenMeta] = useState<{
-    tokens: number;
-    ms: number;
-    tps: number;
-    cacheHit: boolean;
-  } | null>(null);
+  const [isParsingPlan, setIsParsingPlan] = useState(false);
+  const [dealTimingTip, setDealTimingTip] = useState<string | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<
     'NOW' | 'NEXT_MONTH' | 'THREE_MONTHS'
   >('NEXT_MONTH');
 
   // Fast preset buttons for quick simulation
   const presets = [
-    { label: 'Phone ₹80k (Bonus Test)', name: 'Flagship Phone', amount: '80000', prio: 'WANT' as const },
+    { label: 'Phone ₹80k', name: 'Flagship Phone', amount: '80000', prio: 'WANT' as const },
     { label: 'Laptop ₹50k', name: 'New Laptop', amount: '50000', prio: 'WANT' as const },
     { label: 'Bike ₹1.2L', name: 'Commuter Bike', amount: '120000', prio: 'ESSENTIAL' as const },
     { label: 'Trip ₹18k', name: 'Weekend Trip', amount: '18000', prio: 'LUXURY' as const },
   ];
 
-  const handleExtractPlanWithLlama = async () => {
-    if (!planPrompt.trim()) return;
-    const intent = await llamaClient.parsePlanIntent(planPrompt);
+  const handleRunOnlinePlan = async () => {
+    if (!planPrompt.trim() || isParsingPlan) return;
+    setIsParsingPlan(true);
+    const intent = await parsePurchasePlanOnline(planPrompt);
+    setIsParsingPlan(false);
     setItemName(intent.itemName);
     setPurchaseAmount(String(intent.purchaseAmount));
+    setPriority(intent.priority);
+    setDealTimingTip(intent.dealTimingTip || null);
     if (intent.suggestedNewEmi > 0) {
       setAddedMonthlyEmi(String(intent.suggestedNewEmi));
     }
@@ -83,17 +79,13 @@ export default function SimulatorScreen() {
         }
       });
     }
-    setPlanTokenMeta({
-      tokens: intent.tokensEncoded,
-      ms: intent.inferenceMs,
-      tps: intent.tokensPerSec,
-      cacheHit: intent.kvCacheHit,
-    });
   };
 
   const parsedAmount = Math.max(100, parseFloat(purchaseAmount) || 0);
   const parsedFloor = Math.max(0, parseFloat(reserveFloor) || 15000);
   const parsedAddedEmi = Math.max(0, parseFloat(addedMonthlyEmi) || 0);
+  const hourlyNetRate = Math.max(100, Math.round(totalIncome / 176));
+  const hoursOfWork = Math.round((parsedAmount / hourlyNetRate) * 10) / 10;
 
   // Re-run deterministic simulation whenever inputs or What-If toggles change
   const scenarios = useMemo(() => {
@@ -152,7 +144,7 @@ export default function SimulatorScreen() {
         >
           <ArrowLeft size={20} color={THEME.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Purchase Decision Simulator</Text>
+        <Text style={styles.headerTitle}>Purchase Simulator</Text>
         <TouchableOpacity
           style={styles.infoButton}
           onPress={() => router.push('/analysis')}
@@ -166,19 +158,6 @@ export default function SimulatorScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Banner Explaining Feature */}
-        <View style={styles.heroBanner}>
-          <View style={styles.sparkleCircle}>
-            <Calculator size={18} color={THEME.colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.bannerTitle}>Simulate Before You Spend</Text>
-            <Text style={styles.bannerText}>
-              Test major purchases against your real local cash flow, committed bills, and reserve floor.
-            </Text>
-          </View>
-        </View>
-
         {/* Quick Presets */}
         <ScrollView
           horizontal
@@ -214,8 +193,7 @@ export default function SimulatorScreen() {
         <View style={styles.inputCard}>
           <Text style={styles.cardHeaderTitle}>Purchase Parameters</Text>
 
-          {/* Item Name Input */}
-          <Text style={styles.label}>What do you plan to buy?</Text>
+          <Text style={styles.label}>Item</Text>
           <TextInput
             style={styles.textInput}
             value={itemName}
@@ -224,7 +202,6 @@ export default function SimulatorScreen() {
             placeholderTextColor={THEME.colors.textMuted}
           />
 
-          {/* Amount Input */}
           <View style={styles.amountInputRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Estimated Cost (₹)</Text>
@@ -239,7 +216,7 @@ export default function SimulatorScreen() {
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Safety Reserve Floor (₹)</Text>
+              <Text style={styles.label}>Safety Reserve (₹)</Text>
               <TextInput
                 style={[styles.textInput, styles.reserveInput]}
                 value={reserveFloor}
@@ -251,8 +228,7 @@ export default function SimulatorScreen() {
             </View>
           </View>
 
-          {/* Priority Selector */}
-          <Text style={styles.label}>Purchase Priority</Text>
+          <Text style={styles.label}>Priority</Text>
           <View style={styles.priorityRow}>
             {(['ESSENTIAL', 'WANT', 'INVESTMENT', 'LUXURY'] as PurchasePriority[]).map(
               (prio) => {
@@ -280,74 +256,69 @@ export default function SimulatorScreen() {
             )}
           </View>
 
-          {/* Natural-Language Llama + SentencePiece Plan Extractor */}
+          {/* Hours of Work Opportunity Cost */}
           <View
             style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: THEME.colors.lavenderLight,
+              paddingHorizontal: 12,
+              paddingVertical: 9,
+              borderRadius: THEME.borderRadius.md,
               marginTop: THEME.spacing.md,
-              paddingTop: THEME.spacing.md,
-              borderTopWidth: 1,
-              borderTopColor: THEME.colors.borderLight,
             }}
           >
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 6,
-              }}
-            >
-              <Text style={styles.label}>
-                Write Your Plan (Llama + {modelStatus.fileName} Tokenizer)
-              </Text>
-              <Text style={{ fontSize: 10, fontWeight: '700', color: THEME.colors.primary }}>
-                {modelStatus.loaded ? `${modelStatus.vocabSize.toLocaleString()} vocab` : 'Ready'}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Clock size={14} color={THEME.colors.primary} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.textPrimary }}>
+                Work-Hours Equivalent
               </Text>
             </View>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: THEME.colors.primary }}>
+              {hoursOfWork} hrs ({formatINR(hourlyNetRate)}/hr)
+            </Text>
+          </View>
+
+          {/* Write Your Plan (Online Gemini AI) */}
+          <View style={styles.dividerSection}>
+            <Text style={styles.label}>Write Your Plan (Gemini AI)</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <TextInput
                   style={[styles.textInput, { marginBottom: 0 }]}
                   value={planPrompt}
                   onChangeText={setPlanPrompt}
-                  placeholder="e.g. Can I afford ₹80,000 phone next month if I cancel Netflix?"
+                  placeholder="e.g. Buy ₹65,000 camera next month and pause Netflix"
                   placeholderTextColor={THEME.colors.textMuted}
-                  onSubmitEditing={handleExtractPlanWithLlama}
+                  onSubmitEditing={handleRunOnlinePlan}
                 />
               </View>
               <TouchableOpacity
-                onPress={handleExtractPlanWithLlama}
-                style={{
-                  backgroundColor: THEME.colors.primary,
-                  paddingHorizontal: 14,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  borderRadius: THEME.borderRadius.md,
-                }}
+                onPress={handleRunOnlinePlan}
+                style={[styles.runPlanBtn, isParsingPlan && { opacity: 0.65 }]}
+                disabled={isParsingPlan}
               >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFF' }}>Run Plan</Text>
+                <Text style={styles.runPlanBtnText}>{isParsingPlan ? '...' : 'Run'}</Text>
               </TouchableOpacity>
             </View>
-            {planTokenMeta && (
-              <Text style={{ fontSize: 10, color: THEME.colors.success, marginTop: 5, fontWeight: '600' }}>
-                Tokenized {planTokenMeta.tokens} subwords in {planTokenMeta.ms}ms ({planTokenMeta.tps}{' '}
-                tok/s • {planTokenMeta.cacheHit ? 'KV-Cache Hit' : modelStatus.quantizationMode})
+            {dealTimingTip && (
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '600',
+                  color: THEME.colors.primary,
+                  marginTop: 6,
+                }}
+              >
+                {dealTimingTip}
               </Text>
             )}
           </View>
 
-          {/* What-If Change of Plan Controls (Extra Point #4) */}
-          <View
-            style={{
-              marginTop: THEME.spacing.md,
-              paddingTop: THEME.spacing.md,
-              borderTopWidth: 1,
-              borderTopColor: THEME.colors.borderLight,
-            }}
-          >
-            <Text style={styles.label}>
-              What-If Change of Plan: Cancel Subscription or Add New Loan EMI
-            </Text>
+          {/* Subscriptions & EMI Adjustments */}
+          <View style={styles.dividerSection}>
+            <Text style={styles.label}>Subscriptions & Optional EMI</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -373,51 +344,28 @@ export default function SimulatorScreen() {
                         isCancelled && { color: THEME.colors.success, fontWeight: '700' },
                       ]}
                     >
-                      {isCancelled ? `Cancelled: ${rec.name}` : `Cancel ${rec.name} (${formatINR(rec.amount)})`}
+                      {isCancelled ? `Paused: ${rec.name}` : `${rec.name} (${formatINR(rec.amount)})`}
                     </Text>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-              <View style={{ flex: 1 }}>
-                <TextInput
-                  style={[styles.textInput, { marginBottom: 0 }]}
-                  value={addedMonthlyEmi}
-                  onChangeText={setAddedMonthlyEmi}
-                  keyboardType="numeric"
-                  placeholder="Optional New Loan EMI ₹/mo (e.g. 3500)"
-                  placeholderTextColor={THEME.colors.textMuted}
-                />
-              </View>
-              <TouchableOpacity
-                onPress={
-                  transactions.length < 20 ? resetDemoData : loadShortHistoryTestMode
-                }
-                style={{
-                  backgroundColor: THEME.colors.lavenderLight,
-                  paddingHorizontal: 10,
-                  paddingVertical: 10,
-                  borderRadius: THEME.borderRadius.md,
-                }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: THEME.colors.primary }}>
-                  {transactions.length < 20 ? 'Restore 4M Data' : 'Test <3M Guardrail'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TextInput
+              style={[styles.textInput, { marginBottom: 0 }]}
+              value={addedMonthlyEmi}
+              onChangeText={setAddedMonthlyEmi}
+              keyboardType="numeric"
+              placeholder="Optional Monthly EMI (₹)"
+              placeholderTextColor={THEME.colors.textMuted}
+            />
           </View>
         </View>
 
-        {/* Results Section */}
+        {/* Results Section (Zero evaluation remarks / subtitles) */}
         <View style={styles.resultsHeader}>
           <Text style={styles.resultsTitle}>Evaluation Scenarios</Text>
-          <Text style={styles.resultsSubtitle}>
-            Calculated offline against your recorded balance of {formatINR(totalBalance)}
-          </Text>
         </View>
 
-        {/* Render the 3 Scenarios (Next Month, Buy Now, Save 3 Months) */}
         {scenarios.map((scenario) => (
           <PurchaseScenarioCard
             key={scenario.scenarioId}
@@ -435,12 +383,7 @@ export default function SimulatorScreen() {
         >
           <View style={styles.ctaLeft}>
             <Sparkles size={20} color={THEME.colors.primary} />
-            <View>
-              <Text style={styles.ctaTitle}>Detailed Financial Analysis</Text>
-              <Text style={styles.ctaSubtitle}>
-                View confidence ratings, data coverage, and risk limits.
-              </Text>
-            </View>
+            <Text style={styles.ctaTitle}>Detailed Financial Analysis</Text>
           </View>
           <TrendingUp size={18} color={THEME.colors.primary} />
         </TouchableOpacity>
@@ -496,36 +439,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: THEME.spacing.lg,
     paddingBottom: 24,
-  },
-  heroBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FAF5FF',
-    padding: THEME.spacing.base,
-    borderRadius: THEME.borderRadius.lg,
-    gap: THEME.spacing.md,
-    borderWidth: 1,
-    borderColor: '#E9D5FF',
-    marginBottom: THEME.spacing.md,
-  },
-  sparkleCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#F3E8FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bannerTitle: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: '700',
-    color: '#6B21A8',
-  },
-  bannerText: {
-    fontSize: 11,
-    color: '#7E22CE',
-    lineHeight: 16,
-    marginTop: 2,
   },
   presetScroll: {
     gap: 8,
@@ -621,6 +534,24 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
   },
+  dividerSection: {
+    marginTop: THEME.spacing.md,
+    paddingTop: THEME.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.borderLight,
+  },
+  runPlanBtn: {
+    backgroundColor: THEME.colors.primary,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: THEME.borderRadius.md,
+  },
+  runPlanBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFF',
+  },
   resultsHeader: {
     marginBottom: THEME.spacing.sm,
   },
@@ -628,11 +559,6 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.md,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-  },
-  resultsSubtitle: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    marginTop: 2,
   },
   analysisCtaCard: {
     backgroundColor: THEME.colors.card,
@@ -656,10 +582,5 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.xs,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-  },
-  ctaSubtitle: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    marginTop: 2,
   },
 });

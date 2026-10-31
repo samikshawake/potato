@@ -3,8 +3,8 @@ import type { BankAccount } from '../types/finance.ts';
 export const DEMO_ACCOUNTS: BankAccount[] = [
   {
     id: 'acc_hdfc_01',
-    name: 'Primary Salary',
-    bankName: 'HDFC Bank',
+    name: 'Salary & UPI',
+    bankName: 'Primary Account',
     accountNumberMasked: '•••• 4312',
     balance: 38420,
     type: 'SAVINGS',
@@ -13,8 +13,8 @@ export const DEMO_ACCOUNTS: BankAccount[] = [
   },
   {
     id: 'acc_sbi_02',
-    name: 'Emergency Savings',
-    bankName: 'SBI Bank',
+    name: 'Savings Reserve',
+    bankName: 'Savings Account',
     accountNumberMasked: '•••• 8821',
     balance: 9900,
     type: 'SAVINGS',

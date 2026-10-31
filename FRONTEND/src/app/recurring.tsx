@@ -13,16 +13,23 @@ import {
 import { THEME, formatINR } from '../constants/theme';
 import { useFinance } from '../context/FinanceContext';
 import { RecurringPaymentCard } from '../components/RecurringPaymentCard';
+import { BillCollisionCard } from '../components/BillCollisionCard';
+import { SafeToSpendCard } from '../components/SafeToSpendCard';
+import { detectBillCollisions, calculateSafeToSpend } from '../services/cashCompassIntelligence';
 import { BottomNavigation, NavTab } from '../components/BottomNavigation';
 
 export default function RecurringScreen() {
   const router = useRouter();
-  const { recurring, totalRecurringMonthly } = useFinance();
+  const { recurring, totalRecurringMonthly, totalIncome, totalBalance } = useFinance();
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'UPCOMING'>('ACTIVE');
+  const [userReserve, setUserReserve] = useState<number>(10000);
 
   const filtered = recurring.filter((item) =>
     activeTab === 'ACTIVE' ? item.status === 'ACTIVE' : true
   );
+
+  const billCollisions = detectBillCollisions(recurring, totalBalance);
+  const safeToSpendData = calculateSafeToSpend(totalIncome, recurring, userReserve, totalBalance);
 
   const handleNavChange = (tab: NavTab) => {
     switch (tab) {
@@ -54,7 +61,7 @@ export default function RecurringScreen() {
         >
           <ArrowLeft size={20} color={THEME.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Recurring Commitments</Text>
+        <Text style={styles.headerTitle}>Recurring & Cash Intelligence</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -70,18 +77,17 @@ export default function RecurringScreen() {
           </View>
           <Text style={styles.summaryLabel}>Total Monthly Recurring</Text>
           <Text style={styles.summaryAmount}>{formatINR(totalRecurringMonthly)}</Text>
-          <Text style={styles.summarySub}>
-            Estimated automatically across {recurring.length} recurring schedules
-          </Text>
         </View>
 
-        {/* Disclaimer Card */}
-        <View style={styles.disclaimerBox}>
-          <Info size={16} color={THEME.colors.primary} />
-          <Text style={styles.disclaimerText}>
-            Recurring payments are estimated from your transaction history. Unconfirmed until validated by you.
-          </Text>
-        </View>
+        {/* Bill Collision Warning Card */}
+        <BillCollisionCard collisions={billCollisions} />
+
+        {/* Safe-to-Spend This Week Card */}
+        <SafeToSpendCard
+          data={safeToSpendData}
+          userReserve={userReserve}
+          onUpdateReserve={(val) => setUserReserve(val)}
+        />
 
         {/* Working Tabs: Active vs Upcoming */}
         <View style={styles.tabsRow}>

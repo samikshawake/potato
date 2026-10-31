@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Bell, Plus, ShieldCheck } from 'lucide-react-native';
+import { Bell, Plus } from 'lucide-react-native';
 import { THEME } from '../constants/theme';
 
 interface Props {
@@ -18,7 +18,7 @@ export const Header: React.FC<Props> = ({
 }) => {
   return (
     <View style={styles.header}>
-      {/* Left: Avatar & Greeting */}
+      {/* Left: Avatar & Greeting (clean, nothing below the name) */}
       <TouchableOpacity
         style={styles.profileSection}
         onPress={onPressProfile}
@@ -27,15 +27,7 @@ export const Header: React.FC<Props> = ({
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{userName.charAt(0)}</Text>
         </View>
-        <View>
-          <View style={styles.greetingRow}>
-            <Text style={styles.greeting}>Hey, {userName}</Text>
-          </View>
-          <View style={styles.statusPill}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>Offline & Private</Text>
-          </View>
-        </View>
+        <Text style={styles.greeting}>Hey, {userName}</Text>
       </TouchableOpacity>
 
       {/* Right: Quick Add + Notification Actions */}
@@ -90,31 +82,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.primary,
   },
-  greetingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   greeting: {
     fontSize: THEME.typography.sizes.md,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  statusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: THEME.colors.success,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: THEME.colors.textSecondary,
   },
   actionsRow: {
     flexDirection: 'row',

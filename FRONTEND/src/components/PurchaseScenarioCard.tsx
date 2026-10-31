@@ -58,7 +58,6 @@ export const PurchaseScenarioCard: React.FC<Props> = ({
       style={[
         styles.card,
         isSelected && styles.cardSelected,
-        { borderLeftColor: statusMeta.textColor, borderLeftWidth: 4 },
       ]}
     >
       <TouchableOpacity
@@ -68,7 +67,6 @@ export const PurchaseScenarioCard: React.FC<Props> = ({
       >
         <View style={styles.headerLeft}>
           <Text style={styles.scenarioTitle}>{scenario.scenarioTitle}</Text>
-          <Text style={styles.verdictText}>{scenario.verdict}</Text>
         </View>
 
         <View style={[styles.statusBadge, { backgroundColor: statusMeta.bg }]}>
@@ -86,7 +84,12 @@ export const PurchaseScenarioCard: React.FC<Props> = ({
           <Text
             style={[
               styles.numberValue,
-              { color: scenario.estimatedRemainingBalance < scenario.configuredReserveFloor ? THEME.colors.danger : THEME.colors.textPrimary },
+              {
+                color:
+                  scenario.estimatedRemainingBalance < scenario.configuredReserveFloor
+                    ? THEME.colors.danger
+                    : THEME.colors.textPrimary,
+              },
             ]}
           >
             {formatINR(scenario.estimatedRemainingBalance)}
@@ -98,7 +101,12 @@ export const PurchaseScenarioCard: React.FC<Props> = ({
           <Text
             style={[
               styles.numberValue,
-              { color: scenario.netBufferAboveReserve >= 0 ? THEME.colors.success : THEME.colors.danger },
+              {
+                color:
+                  scenario.netBufferAboveReserve >= 0
+                    ? THEME.colors.success
+                    : THEME.colors.danger,
+              },
             ]}
           >
             {scenario.netBufferAboveReserve >= 0 ? '+' : ''}
@@ -107,9 +115,7 @@ export const PurchaseScenarioCard: React.FC<Props> = ({
         </View>
       </View>
 
-      <Text style={styles.explanationText}>{scenario.explanation}</Text>
-
-      {/* "How did we calculate this?" Collapsible Accordion */}
+      {/* Calculation Breakdown Accordion (no evaluation remarks) */}
       <TouchableOpacity
         style={styles.accordionToggle}
         onPress={() => setShowCalculation(!showCalculation)}
@@ -117,7 +123,7 @@ export const PurchaseScenarioCard: React.FC<Props> = ({
       >
         <View style={styles.accordionToggleLeft}>
           <HelpCircle size={14} color={THEME.colors.primary} />
-          <Text style={styles.accordionToggleText}>How did we calculate this?</Text>
+          <Text style={styles.accordionToggleText}>View Calculation</Text>
         </View>
         {showCalculation ? (
           <ChevronUp size={16} color={THEME.colors.primary} />
@@ -173,17 +179,8 @@ export const PurchaseScenarioCard: React.FC<Props> = ({
           <View style={styles.reserveNoteRow}>
             <Shield size={12} color={THEME.colors.textMuted} />
             <Text style={styles.reserveNoteText}>
-              Safety Reserve Floor: {formatINR(scenario.configuredReserveFloor)} (Protected)
+              Safety Reserve Floor: {formatINR(scenario.configuredReserveFloor)}
             </Text>
-          </View>
-
-          <View style={styles.uncertaintyBox}>
-            <Text style={styles.uncertaintyTitle}>Assumptions & Confidence:</Text>
-            {scenario.uncertaintyNotes.map((note, idx) => (
-              <Text key={idx} style={styles.uncertaintyItem}>
-                • {note}
-              </Text>
-            ))}
           </View>
         </View>
       )}
@@ -207,9 +204,9 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: THEME.spacing.sm,
+    marginBottom: THEME.spacing.xs,
   },
   headerLeft: {
     flex: 1,
@@ -219,11 +216,6 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.base,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-  },
-  verdictText: {
-    fontSize: THEME.typography.sizes.xs,
-    color: THEME.colors.textSecondary,
-    marginTop: 2,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -258,18 +250,12 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.base,
     fontWeight: '800',
   },
-  explanationText: {
-    fontSize: THEME.typography.sizes.xs,
-    color: THEME.colors.textSecondary,
-    lineHeight: 18,
-    marginVertical: 4,
-  },
   accordionToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: THEME.spacing.sm,
-    marginTop: 4,
+    paddingVertical: THEME.spacing.xs,
+    marginTop: 2,
     borderTopWidth: 1,
     borderTopColor: THEME.colors.borderLight,
   },
@@ -330,22 +316,5 @@ const styles = StyleSheet.create({
   reserveNoteText: {
     fontSize: 10,
     color: THEME.colors.textMuted,
-  },
-  uncertaintyBox: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderLight,
-  },
-  uncertaintyTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-    marginBottom: 2,
-  },
-  uncertaintyItem: {
-    fontSize: 10,
-    color: THEME.colors.textMuted,
-    lineHeight: 14,
   },
 });

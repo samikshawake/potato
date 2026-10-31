@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,12 +15,7 @@ import {
   RotateCcw,
   Download,
   CreditCard,
-  Lock,
-  Info,
   ChevronRight,
-  Database,
-  Moon,
-  Sparkles,
   LogOut,
   Cpu,
 } from 'lucide-react-native';
@@ -80,7 +74,7 @@ export default function SettingsScreen() {
         >
           <ArrowLeft size={20} color={THEME.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile & Privacy Settings</Text>
+        <Text style={styles.headerTitle}>Profile & Settings</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -89,7 +83,7 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* User Card */}
+        {/* User Card (clean — no elements below user name) */}
         <View style={styles.profileCard}>
           <View style={styles.avatarCircle}>
             <Text style={styles.avatarLetter}>
@@ -98,51 +92,22 @@ export default function SettingsScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.profileName}>{user?.fullName || 'Parth'}</Text>
-            <Text style={styles.profileRole}>
-              {user?.email || 'CashCompass Offline Edition'}
-            </Text>
-            <View style={styles.offlinePill}>
-              <View style={styles.greenDot} />
-              <Text style={styles.offlinePillText}>Authenticated Vault • Zero Cloud Leaks</Text>
-            </View>
           </View>
           <TouchableOpacity
             onPress={() => {
               logout();
               router.replace('/auth');
             }}
-            style={{
-              backgroundColor: '#FDEDF0',
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              borderRadius: THEME.borderRadius.md,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-            }}
+            style={styles.signOutBtn}
             accessibilityLabel="Sign out"
           >
             <LogOut size={14} color={THEME.colors.danger} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.danger }}>
-              Sign Out
-            </Text>
+            <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Local Storage Architecture & Metrics */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>On-Device Storage</Text>
-        </View>
-
+        {/* Overview Stats */}
         <View style={styles.card}>
-          <View style={styles.storageHeader}>
-            <Database size={18} color={THEME.colors.primary} />
-            <Text style={styles.storageTitle}>Local SQLite Architecture</Text>
-          </View>
-          <Text style={styles.storageSub}>
-            All financial metrics, transactions, and simulation assumptions are stored and calculated strictly on this device.
-          </Text>
-
           <View style={styles.statsRow}>
             <View style={styles.statBox}>
               <Text style={styles.statNum}>{transactions.length}</Text>
@@ -150,44 +115,46 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.statBox}>
               <Text style={styles.statNum}>{accounts.length}</Text>
-              <Text style={styles.statLabel}>Bank Accounts</Text>
+              <Text style={styles.statLabel}>Accounts</Text>
             </View>
             <View style={styles.statBox}>
-              <Text style={styles.statNum}>0 KB</Text>
-              <Text style={styles.statLabel}>Cloud Data</Text>
+              <Text style={styles.statNum}>{formatINR(totalBalance)}</Text>
+              <Text style={styles.statLabel}>Total Balance</Text>
             </View>
           </View>
         </View>
 
         {/* Linked Accounts */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Managed Accounts</Text>
-        </View>
-
-        <View style={styles.card}>
-          {accounts.map((acc, idx) => (
-            <View
-              key={acc.id}
-              style={[
-                styles.accountRow,
-                idx !== accounts.length - 1 && styles.accountRowBorder,
-              ]}
-            >
-              <View style={styles.accountIconCircle}>
-                <CreditCard size={18} color={THEME.colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.accountName}>{acc.bankName}</Text>
-                <Text style={styles.accountNumber}>
-                  {acc.name} • {acc.accountNumberMasked}
-                </Text>
-              </View>
-              <Text style={styles.accountBalance}>{formatINR(acc.balance)}</Text>
+        {accounts.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Accounts</Text>
             </View>
-          ))}
-        </View>
 
-        {/* Data Privacy & Reset Actions */}
+            <View style={styles.card}>
+              {accounts.map((acc, idx) => (
+                <View
+                  key={acc.id}
+                  style={[
+                    styles.accountRow,
+                    idx !== accounts.length - 1 && styles.accountRowBorder,
+                  ]}
+                >
+                  <View style={styles.accountIconCircle}>
+                    <CreditCard size={18} color={THEME.colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.accountName}>{acc.name || acc.bankName}</Text>
+                    <Text style={styles.accountNumber}>{acc.accountNumberMasked}</Text>
+                  </View>
+                  <Text style={styles.accountBalance}>{formatINR(acc.balance)}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Data Management Actions (no short instructions below headings) */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Data Management</Text>
         </View>
@@ -199,10 +166,7 @@ export default function SettingsScreen() {
           >
             <View style={styles.actionLeft}>
               <Download size={18} color={THEME.colors.primary} />
-              <View>
-                <Text style={styles.actionLabel}>Export Local JSON Data</Text>
-                <Text style={styles.actionSub}>Backup your offline database</Text>
-              </View>
+              <Text style={styles.actionLabel}>Export JSON Data</Text>
             </View>
             <ChevronRight size={16} color={THEME.colors.textMuted} />
           </TouchableOpacity>
@@ -213,14 +177,7 @@ export default function SettingsScreen() {
           >
             <View style={styles.actionLeft}>
               <Cpu size={18} color={THEME.colors.primary} />
-              <View>
-                <Text style={styles.actionLabel}>
-                  Llama Model (.pte), Tokenizer & Security Center
-                </Text>
-                <Text style={styles.actionSub}>
-                  Tokenizer benchmark, SSRF guard, JWT rotation, Policies & Data Erasure
-                </Text>
-              </View>
+              <Text style={styles.actionLabel}>Model & Security Center</Text>
             </View>
             <ChevronRight size={16} color={THEME.colors.textMuted} />
           </TouchableOpacity>
@@ -231,48 +188,27 @@ export default function SettingsScreen() {
           >
             <View style={styles.actionLeft}>
               <RotateCcw size={18} color={THEME.colors.danger} />
-              <View>
-                <Text style={[styles.actionLabel, { color: THEME.colors.danger }]}>
-                  Reset Demo Data
-                </Text>
-                <Text style={styles.actionSub}>
-                  Restore original 4-month demo figures (₹48,320 balance)
-                </Text>
-              </View>
+              <Text style={[styles.actionLabel, { color: THEME.colors.danger }]}>
+                Reset Demo Data
+              </Text>
             </View>
             <ChevronRight size={16} color={THEME.colors.textMuted} />
           </TouchableOpacity>
         </View>
 
         {/* Quick Legal Links Row */}
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            gap: 10,
-            marginBottom: THEME.spacing.sm,
-          }}
-        >
+        <View style={styles.legalLinksRow}>
           <TouchableOpacity onPress={() => openLegalDoc('privacy')}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.primary }}>
-              Privacy Policy
-            </Text>
+            <Text style={styles.legalLinkText}>Privacy Policy</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => openLegalDoc('terms')}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.primary }}>
-              Terms
-            </Text>
+            <Text style={styles.legalLinkText}>Terms</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => openLegalDoc('refund')}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.primary }}>
-              Refund Policy
-            </Text>
+            <Text style={styles.legalLinkText}>Refund Policy</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => openLegalDoc('cookies')}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.primary }}>
-              Cookie Policy
-            </Text>
+            <Text style={styles.legalLinkText}>Cookie Policy</Text>
           </TouchableOpacity>
         </View>
 
@@ -280,20 +216,14 @@ export default function SettingsScreen() {
           <View style={styles.resetFeedbackBox}>
             <ShieldCheck size={16} color={THEME.colors.success} />
             <Text style={styles.resetFeedbackText}>
-              Local demo data reset to default successfully.
+              Demo data reset successfully.
             </Text>
           </View>
         )}
 
-        {/* About App */}
         <View style={styles.aboutBox}>
-          <Text style={styles.aboutTitle}>
-            CashCompass — Offline-First Explainable Personal Finance Assistant
-          </Text>
-          <Text style={styles.aboutText}>
-            Built for Problem Statement 4: Personal Finance Assistant That Explains Its Answers.
-          </Text>
-          <Text style={styles.aboutVersion}>Version 1.0.0 (Offline Native Build)</Text>
+          <Text style={styles.aboutTitle}>CashCompass</Text>
+          <Text style={styles.aboutVersion}>Version 1.0.0</Text>
         </View>
 
         <View style={{ height: 24 }} />
@@ -308,10 +238,7 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Local Database Snapshot</Text>
-            <Text style={styles.modalSub}>
-              Copy or inspect your unencrypted offline records:
-            </Text>
+            <Text style={styles.modalTitle}>Data Snapshot</Text>
 
             <ScrollView style={styles.jsonPreviewBox}>
               <Text style={styles.jsonText}>
@@ -394,9 +321,9 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.md,
   },
   avatarCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: THEME.colors.lavenderLight,
     alignItems: 'center',
     justifyContent: 'center',
@@ -404,7 +331,7 @@ const styles = StyleSheet.create({
     borderColor: THEME.colors.primary,
   },
   avatarLetter: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: THEME.colors.primary,
   },
@@ -413,35 +340,22 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: THEME.colors.textPrimary,
   },
-  profileRole: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    marginTop: 2,
-  },
-  offlinePill: {
+  signOutBtn: {
+    backgroundColor: '#FDEDF0',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: THEME.borderRadius.md,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F8F0',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: THEME.borderRadius.full,
-    alignSelf: 'flex-start',
     gap: 4,
-    marginTop: 6,
   },
-  greenDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: THEME.colors.success,
-  },
-  offlinePillText: {
-    fontSize: 9,
+  signOutText: {
+    fontSize: 11,
     fontWeight: '700',
-    color: THEME.colors.success,
+    color: THEME.colors.danger,
   },
   sectionHeader: {
-    marginTop: THEME.spacing.md,
+    marginTop: THEME.spacing.sm,
     marginBottom: THEME.spacing.xs,
   },
   sectionTitle: {
@@ -460,36 +374,15 @@ const styles = StyleSheet.create({
     ...THEME.shadows.card,
     marginBottom: THEME.spacing.md,
   },
-  storageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  storageTitle: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: '700',
-    color: THEME.colors.textPrimary,
-  },
-  storageSub: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    lineHeight: 16,
-    marginVertical: 4,
-  },
   statsRow: {
     flexDirection: 'row',
-    marginTop: THEME.spacing.md,
-    paddingTop: THEME.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderLight,
   },
   statBox: {
     flex: 1,
     alignItems: 'center',
   },
   statNum: {
-    fontSize: THEME.typography.sizes.base,
+    fontSize: THEME.typography.sizes.sm,
     fontWeight: '800',
     color: THEME.colors.primary,
   },
@@ -535,7 +428,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   actionRowBorder: {
     borderTopWidth: 1,
@@ -551,10 +444,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: THEME.colors.textPrimary,
   },
-  actionSub: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    marginTop: 2,
+  legalLinksRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: THEME.spacing.sm,
+  },
+  legalLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.colors.primary,
   },
   resetFeedbackBox: {
     flexDirection: 'row',
@@ -572,25 +472,18 @@ const styles = StyleSheet.create({
   },
   aboutBox: {
     alignItems: 'center',
-    paddingVertical: THEME.spacing.lg,
+    paddingVertical: THEME.spacing.md,
   },
   aboutTitle: {
     fontSize: 11,
     fontWeight: '700',
     color: THEME.colors.textSecondary,
-    textAlign: 'center',
-  },
-  aboutText: {
-    fontSize: 10,
-    color: THEME.colors.textMuted,
-    textAlign: 'center',
-    marginTop: 4,
   },
   aboutVersion: {
     fontSize: 10,
     color: THEME.colors.primary,
     fontWeight: '600',
-    marginTop: 4,
+    marginTop: 2,
   },
   modalOverlay: {
     flex: 1,
@@ -608,11 +501,6 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.base,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-  },
-  modalSub: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    marginVertical: 4,
   },
   jsonPreviewBox: {
     backgroundColor: THEME.colors.background,

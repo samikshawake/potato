@@ -24,10 +24,11 @@ import {
 import { THEME } from '../constants/theme';
 import { MascotAvatar } from '../components/MascotAvatar';
 import { useFinance } from '../context/FinanceContext';
+import { GoogleSignInButton } from '../../../src/services/googleGmailAuth';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { login, register, loginDemo, openLegalDoc } = useFinance();
+  const { login, register, loginDemo, signInWithGoogle, openLegalDoc } = useFinance();
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [fullName, setFullName] = useState('');
@@ -117,6 +118,18 @@ export default function AuthScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setErrorMsg(null);
+    setSubmitting(true);
+    const res = await signInWithGoogle();
+    setSubmitting(false);
+    if (res.ok) {
+      router.replace('/');
+    } else if (res.error) {
+      setErrorMsg(res.error);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -130,15 +143,6 @@ export default function AuthScreen() {
             <MascotAvatar size={80} showShades={true} />
           </View>
           <Text style={styles.appTitle}>CashCompass</Text>
-          <Text style={styles.appSubtitle}>
-            Explainable Personal Finance Assistant • ₹0 Free & Private
-          </Text>
-          <View style={styles.securityBadge}>
-            <ShieldCheck size={12} color={THEME.colors.success} />
-            <Text style={styles.securityBadgeText}>
-              PBKDF2-SHA256 (210k) + 256-Bit HS256 JWT Vault
-            </Text>
-          </View>
         </View>
 
         {/* Segmented Mode Switcher: Sign In / Create Account */}
@@ -186,7 +190,7 @@ export default function AuthScreen() {
 
           {mode === 'register' && (
             <View style={styles.fieldGroup}>
-              <Text style={styles.inputLabel}>Full Name (Minimum Data Collected)</Text>
+              <Text style={styles.inputLabel}>Full Name</Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="e.g. Parth Patil"
@@ -315,7 +319,7 @@ export default function AuthScreen() {
                   <Square size={18} color={THEME.colors.textMuted} />
                 )}
                 <Text style={styles.checkLabel}>
-                  Start with an empty ₹0 ledger (instead of 4-month sample HDFC + SBI data).
+                  Start with an empty ₹0 ledger.
                 </Text>
               </TouchableOpacity>
             </View>
@@ -329,12 +333,21 @@ export default function AuthScreen() {
             <Lock size={16} color="#FFF" />
             <Text style={styles.primarySubmitText}>
               {submitting
-                ? 'Authenticating Vault...'
+                ? 'Signing In...'
                 : mode === 'login'
-                ? 'Sign In to CashCompass'
-                : 'Create Encrypted Account'}
+                ? 'Sign In'
+                : 'Create Account'}
             </Text>
           </TouchableOpacity>
+
+          {/* Official Sign in with Google (enables Gmail Sync) */}
+          <View style={{ marginTop: 10 }}>
+            <GoogleSignInButton
+              onClick={handleGoogleSignIn}
+              disabled={submitting}
+              label="Sign in with Google"
+            />
+          </View>
 
           {/* 1-Click Demo Login for Parth */}
           <TouchableOpacity
@@ -344,15 +357,9 @@ export default function AuthScreen() {
           >
             <Sparkles size={15} color={THEME.colors.primary} />
             <Text style={styles.demoLoginText}>
-              Continue with Demo Account (Parth • ₹48,320)
+              Continue with Demo Account
             </Text>
           </TouchableOpacity>
-
-          {mode === 'login' && (
-            <Text style={styles.demoCredHint}>
-              Demo login: parth@cashcompass.local / CashCompass@2026
-            </Text>
-          )}
         </View>
 
         {/* Transparent Legal Footer Links & Business Info */}

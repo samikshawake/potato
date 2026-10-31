@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Sparkles, Lightbulb, ChevronRight, AlertTriangle, ArrowUpRight } from 'lucide-react-native';
+import { Sparkles, Lightbulb, ChevronRight } from 'lucide-react-native';
 import { THEME } from '../constants/theme';
 import { FinancialInsight } from '../types/finance';
 
@@ -17,13 +17,12 @@ export const InsightCard: React.FC<Props> = ({
 }) => {
   return (
     <View style={styles.container}>
-      {/* Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.titleRow}>
           <View style={styles.sparkleCircle}>
             <Sparkles size={16} color={THEME.colors.primary} />
           </View>
-          <Text style={styles.headerTitle}>AI Insights</Text>
+          <Text style={styles.headerTitle}>Insights</Text>
         </View>
 
         {onPressShowAll && (
@@ -38,7 +37,6 @@ export const InsightCard: React.FC<Props> = ({
         )}
       </View>
 
-      {/* Main Insight Bubble */}
       <TouchableOpacity
         style={styles.insightBubble}
         onPress={onPressAction}
@@ -50,11 +48,6 @@ export const InsightCard: React.FC<Props> = ({
         <View style={styles.textContent}>
           <Text style={styles.insightTitle}>{insight.title}</Text>
           <Text style={styles.insightDescription}>{insight.description}</Text>
-          <View style={styles.explainBadge}>
-            <Text style={styles.explainText}>
-              Used: {insight.dataPointsUsed.join(' • ')}
-            </Text>
-          </View>
         </View>
       </TouchableOpacity>
     </View>
@@ -136,16 +129,5 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.xs,
     color: THEME.colors.textSecondary,
     lineHeight: 18,
-  },
-  explainBadge: {
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderLight,
-  },
-  explainText: {
-    fontSize: 10,
-    color: THEME.colors.textMuted,
-    fontWeight: '500',
   },
 });

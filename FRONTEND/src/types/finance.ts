@@ -2,7 +2,7 @@ export type TransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export type PaymentMethod = 'UPI' | 'NEFT' | 'IMPS' | 'ATM' | 'CARD' | 'AUTO_DEBIT';
 
-export type TransactionCategory =
+export type PresetTransactionCategory =
   | 'Food'
   | 'Rent'
   | 'Shopping'
@@ -10,9 +10,17 @@ export type TransactionCategory =
   | 'Bills'
   | 'Entertainment'
   | 'Salary'
+  | 'Pocket Money'
   | 'Investments'
   | 'Healthcare'
   | 'Other';
+
+export type TransactionCategory = PresetTransactionCategory | (string & {});
+
+export interface CustomCategoryItem {
+  name: string;
+  color: string;
+}
 
 export interface Transaction {
   id: string;
@@ -143,3 +151,46 @@ export interface CashFlowForecast {
   burnRatePercentage: number;
   weeklyTrend: MonthlyForecastDay[];
 }
+
+export interface RefundTrackerItem {
+  id: string;
+  merchant: string;
+  title: string;
+  amount: number;
+  initiatedDate: string;
+  expectedByDate: string;
+  status: 'PENDING' | 'CREDITED';
+  sourceEmailSubject?: string;
+}
+
+export interface WarrantyVaultItem {
+  id: string;
+  productName: string;
+  merchant: string;
+  purchaseDate: string;
+  amount: number;
+  returnWindowEnds: string;
+  warrantyExpires: string;
+  invoiceRef?: string;
+}
+
+export interface PriceCreepAlert {
+  id: string;
+  serviceName: string;
+  previousAmount: number;
+  newAmount: number;
+  detectedDate: string;
+  alertType: 'PRICE_HIKE' | 'FREE_TRIAL_ENDING';
+  note: string;
+}
+
+export interface SplitSettlementItem {
+  id: string;
+  title: string;
+  friendName: string;
+  totalBillAmount: number;
+  owedToYouAmount: number;
+  date: string;
+  status: 'PENDING' | 'SETTLED';
+}
+

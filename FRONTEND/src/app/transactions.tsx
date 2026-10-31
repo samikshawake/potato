@@ -32,6 +32,7 @@ export default function TransactionsScreen() {
   const router = useRouter();
   const {
     transactions,
+    availableCategories,
     updateTransactionCategory,
     lastCategoryPropagationNotice,
     clearCategoryNotice,
@@ -45,18 +46,10 @@ export default function TransactionsScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
 
-  const categories = [
-    'ALL',
-    'Food',
-    'Rent',
-    'Shopping',
-    'Travel',
-    'Bills',
-    'Entertainment',
-    'Salary',
-    'Healthcare',
-    'Other',
-  ];
+  const categories = useMemo(
+    () => ['ALL', ...availableCategories],
+    [availableCategories]
+  );
 
   const filteredTransactions = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -237,9 +230,6 @@ export default function TransactionsScreen() {
         {filteredTransactions.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No matching transactions</Text>
-            <Text style={styles.emptySubtitle}>
-              Try adjusting your search query or active category filters.
-            </Text>
           </View>
         ) : (
           filteredTransactions.map((tx) => (
@@ -300,7 +290,7 @@ export default function TransactionsScreen() {
                 </View>
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: THEME.colors.textSecondary }}>
-                    Reassign Category (Applies to same merchant automatically):
+                    Change Category
                   </Text>
                   <ScrollView
                     horizontal
@@ -365,16 +355,10 @@ export default function TransactionsScreen() {
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Recurring Status</Text>
                     <Text style={[styles.detailValue, { color: THEME.colors.primary }]}>
-                      Detected Monthly Cycle
+                      Monthly Cycle
                     </Text>
                   </View>
                 )}
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Privacy Guarantee</Text>
-                  <Text style={[styles.detailValue, { color: THEME.colors.success }]}>
-                    Zero Cloud Upload • Stored Locally
-                  </Text>
-                </View>
               </View>
             )}
           </View>

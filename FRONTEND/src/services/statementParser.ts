@@ -1120,13 +1120,12 @@ export function buildSamplePdfBlob(): Blob {
 export const SAMPLE_STATEMENTS = [
   {
     id: 'gpay_upi_statement_exact',
-    title: 'UPI Statement — IPPB 0262, BOI 3628 & HDFC 1442',
-    bankName: 'Multi-Bank UPI Statement (IPPB • BOI • HDFC)',
+    title: 'April UPI Statement',
+    bankName: 'UPI Statement (April 2026)',
     accountId: 'acc_hdfc_01',
     accountNumber: '0262 • 3628 • 1442',
     dateRange: '01 Apr, 2026 - 20 Apr, 2026',
-    summary:
-      'Exact Date & time | Transaction details | Amount format with UPI Transaction IDs, Paid to, Received from, and Self transfer',
+    summary: '',
     csv: `Date & time,Transaction details,Amount
 "01 Apr, 2026
 11:36 AM","Paid to SHRI SHAMRAO PATIL YADRAVKAR EDUCATIONAL AND CHARITABLE TRUST
@@ -1139,11 +1138,11 @@ Paid to Bank of India 3628","₹100"
 "01 Apr, 2026
 04:50 PM","Self transfer to India Post Payment Bank 0262
 UPI Transaction ID: 645750350390
-Paid by HDFC Bank 1442","₹700"
+Paid by Primary Account 1442","₹700"
 "02 Apr, 2026
 10:05 AM","Paid to Suresh Kumar House Rent Indiranagar
 UPI Transaction ID: 645812904411
-Paid by HDFC Bank 1442","₹12,000"
+Paid by Primary Account 1442","₹12,000"
 "05 Apr, 2026
 08:15 PM","Paid to Swiggy Food Delivery
 UPI Transaction ID: 645899231088
@@ -1151,7 +1150,7 @@ Paid by India Post Payment Bank 0262","₹480"
 "10 Apr, 2026
 09:30 AM","Received from TechCorp India Salary Credit
 UPI Transaction ID: 645940118200
-Paid to HDFC Bank 1442","₹65,000"
+Paid to Primary Account 1442","₹65,000"
 "14 Apr, 2026
 06:20 PM","Paid to Airtel Fiber Broadband Bill
 UPI Transaction ID: 646012883910
@@ -1159,37 +1158,91 @@ Paid by Bank of India 3628","₹1,061"
 "18 Apr, 2026
 09:10 PM","Paid to Netflix Subscription AutoPay
 UPI Transaction ID: 646088712304
-Paid by HDFC Bank 1442","₹499"`,
+Paid by Primary Account 1442","₹499"`,
   },
   {
     id: 'oct_upi_statement',
-    title: 'October UPI Passbook — Salary, Groceries & Bills',
-    bankName: 'Multi-Bank UPI Statement (HDFC 1442 • SBI 8821)',
+    title: 'October UPI Statement',
+    bankName: 'UPI Statement (October 2026)',
     accountId: 'acc_hdfc_01',
     accountNumber: '1442 • 8821',
     dateRange: '01 Oct, 2026 - 25 Oct, 2026',
-    summary:
-      'Received from Client Consulting +₹42,000, Blinkit Groceries, IndianOil Fuel, BESCOM Bill & Self transfer',
+    summary: '',
     csv: `Date & time,Transaction details,Amount
 "10 Oct, 2026
 11:15 AM","Received from Acme Consulting Milestone
 UPI Transaction ID: 691022837461
-Paid to State Bank of India 8821","₹42,000"
+Paid to Savings Account 8821","₹42,000"
 "12 Oct, 2026
 07:42 PM","Paid to Blinkit Quick Groceries
 UPI Transaction ID: 691044918273
-Paid by HDFC Bank 1442","₹1,150"
+Paid by Primary Account 1442","₹1,150"
 "15 Oct, 2026
-05:18 PM","Self transfer to State Bank of India 8821
+05:18 PM","Self transfer to Savings Account 8821
 UPI Transaction ID: 691077362519
-Paid by HDFC Bank 1442","₹5,000"
+Paid by Primary Account 1442","₹5,000"
 "18 Oct, 2026
 02:10 PM","Paid to MakeMyTrip Flight Booking
 UPI Transaction ID: 691099182734
-Paid by State Bank of India 8821","₹5,400"
+Paid by Savings Account 8821","₹5,400"
 "22 Oct, 2026
 04:05 PM","Paid to Apollo Pharmacy Clinic
 UPI Transaction ID: 691122938475
-Paid by HDFC Bank 1442","₹1,100"`,
+Paid by Primary Account 1442","₹1,100"`,
   },
 ];
+
+/**
+ * Parses raw SMS bank alerts / text messages for expenses and incomes.
+ */
+export const parseSmsTextAlert = (text: string, accountId: string): ParsedStatementResult => {
+  const lines = text.split('\n');
+  const transactions: Transaction[] = [];
+  let totalCredits = 0;
+  let totalDebits = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const amountMatch = trimmed.match(/(?:rs\.?|inr|₹)\s*([\d,]+\.?\d*)/i);
+    if (!amountMatch) continue;
+    const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+    if (isNaN(amount) || amount <= 0) continue;
+
+    const isCredit = /credit|received|deposit|sal/i.test(trimmed);
+    const type = isCredit ? 'INCOME' : 'EXPENSE';
+    if (type === 'INCOME') totalCredits += amount;
+    else totalDebits += amount;
+
+    const merchantMatch = trimmed.match(/(?:at|to|from|info:)\s*([a-zA-Z0-9\s]+)(?:\.|ref|upi|$)/i);
+    const merchant = merchantMatch ? merchantMatch[1].trim() : 'SMS Text Alert';
+    const catInfo = categorizeNarration(merchant, type);
+
+    transactions.push({
+      id: `tx_sms_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title: merchant,
+      amount,
+      type,
+      category: catInfo.category,
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      paymentMethod: catInfo.paymentMethod,
+      accountId,
+      merchant,
+      notes: `Extracted from text/SMS alert`,
+    });
+  }
+
+  return {
+    bankName: 'Text / SMS Alerts Import',
+    totalRecords: transactions.length,
+    totalCredits,
+    totalDebits,
+    totalSelfTransfers: 0,
+    dateRange: 'Recent SMS Alerts',
+    transactions,
+    discoveredAccounts: [],
+    parsingNotes: ['Parsed expenses and income from text / SMS messages successfully'],
+  };
+};
+

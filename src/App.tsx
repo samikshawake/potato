@@ -23,6 +23,7 @@ import SettingsScreen from '../FRONTEND/src/app/settings';
 import OnboardingScreen from '../FRONTEND/src/app/onboarding';
 import AuthScreen from '../FRONTEND/src/app/auth';
 import SecurityComplianceScreen from '../FRONTEND/src/app/security';
+import SmartRadarScreen from '../FRONTEND/src/app/smart-radar';
 
 interface AlertState {
   title: string;
@@ -114,9 +115,6 @@ const CashCompassViewport: React.FC = () => {
       <div className="flex-1 flex flex-col items-center justify-center bg-[#F7F6FC] px-6 text-center">
         <MascotAvatar mood="happy" size={68} />
         <p className="mt-4 text-sm font-bold text-[#171725]">CashCompass</p>
-        <p className="mt-1 text-xs text-[#6E6D7A]">
-          Verifying local HS256 vault &amp; SentencePiece tokenizer...
-        </p>
       </div>
     );
   }
@@ -158,6 +156,8 @@ const CashCompassViewport: React.FC = () => {
         return <SettingsScreen />;
       case '/security':
         return <SecurityComplianceScreen />;
+      case '/smart-radar':
+        return <SmartRadarScreen />;
       case '/onboarding':
         return <OnboardingScreen />;
       case '/auth':

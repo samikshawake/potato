@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Eye, EyeOff, CreditCard, ChevronRight, Settings } from 'lucide-react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import { BankAccount } from '../types/finance';
 
 interface Props {
   balance: number;
-  accounts: BankAccount[];
+  accounts?: BankAccount[];
   activeTab: 'Overview' | 'Transactions' | 'Goals';
   onTabChange: (tab: 'Overview' | 'Transactions' | 'Goals') => void;
   onPressCard?: () => void;
@@ -14,40 +14,43 @@ interface Props {
 
 export const BalanceCard: React.FC<Props> = ({
   balance,
-  accounts,
   activeTab,
   onTabChange,
-  onPressCard,
 }) => {
   const [isBalanceHidden, setIsBalanceHidden] = useState(false);
-  const primaryAccount = accounts[0] || {
-    bankName: 'HDFC Bank',
-    accountNumberMasked: '•••• 4312',
-    name: 'Primary Salary',
-  };
 
   return (
     <View style={styles.container}>
-      {/* Top Balance Header */}
-      <View style={styles.balanceHeader}>
-        <Text style={styles.balanceLabel}>Total Balance</Text>
-        <TouchableOpacity
-          onPress={() => setIsBalanceHidden(!isBalanceHidden)}
-          style={styles.eyeButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          {isBalanceHidden ? (
-            <EyeOff size={16} color={THEME.colors.textSecondary} />
-          ) : (
-            <Eye size={16} color={THEME.colors.textSecondary} />
-          )}
-        </TouchableOpacity>
-      </View>
+      <View style={styles.balanceBox}>
+        <View style={styles.balanceHeader}>
+          <Text style={styles.balanceLabel}>Total Balance</Text>
+          <TouchableOpacity
+            onPress={() => setIsBalanceHidden(!isBalanceHidden)}
+            style={styles.eyeButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={isBalanceHidden ? 'Show total balance' : 'Hide total balance'}
+          >
+            {isBalanceHidden ? (
+              <EyeOff size={16} color={THEME.colors.textSecondary} />
+            ) : (
+              <Eye size={16} color={THEME.colors.textSecondary} />
+            )}
+          </TouchableOpacity>
+        </View>
 
-      {/* Balance Amount */}
-      <Text style={styles.balanceAmount}>
-        {isBalanceHidden ? '₹••••••••' : formatINR(balance, true)}
-      </Text>
+        <Text
+          style={[
+            styles.balanceAmount,
+            balance < 0 && { color: THEME.colors.danger },
+          ]}
+        >
+          {isBalanceHidden
+            ? '₹••••••••'
+            : balance < 0
+            ? `−${formatINR(Math.abs(balance), true)}`
+            : formatINR(balance, true)}
+        </Text>
+      </View>
 
       {/* Filter Tabs (Overview / Transactions / Goals) */}
       <View style={styles.tabContainer}>
@@ -67,35 +70,6 @@ export const BalanceCard: React.FC<Props> = ({
           );
         })}
       </View>
-
-      {/* Bank Card / Account Selector (matching reference image Chase card) */}
-      <TouchableOpacity
-        style={styles.bankCard}
-        onPress={onPressCard}
-        activeOpacity={0.85}
-      >
-        <View style={styles.cardHeader}>
-          <View style={styles.bankIdentity}>
-            <View style={styles.bankIconCircle}>
-              <CreditCard size={16} color={THEME.colors.primary} />
-            </View>
-            <View>
-              <Text style={styles.bankName}>{primaryAccount.bankName}</Text>
-              <Text style={styles.accountType}>{primaryAccount.name}</Text>
-            </View>
-          </View>
-          <Settings size={16} color={THEME.colors.textMuted} />
-        </View>
-
-        <View style={styles.cardNumberRow}>
-          <Text style={styles.cardNumberText}>
-            {primaryAccount.accountNumberMasked}
-          </Text>
-          <View style={styles.cardChip}>
-            <View style={styles.chipLine} />
-          </View>
-        </View>
-      </TouchableOpacity>
     </View>
   );
 };
@@ -103,27 +77,35 @@ export const BalanceCard: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: THEME.spacing.lg,
-    paddingTop: THEME.spacing.sm,
+    marginTop: THEME.spacing.md,
+  },
+  balanceBox: {
+    backgroundColor: THEME.colors.card,
+    borderRadius: THEME.borderRadius.xl,
+    padding: THEME.spacing.base,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    ...THEME.shadows.card,
   },
   balanceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
   },
   balanceLabel: {
     fontSize: THEME.typography.sizes.sm,
     color: THEME.colors.textSecondary,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   eyeButton: {
-    padding: 2,
+    padding: 4,
   },
   balanceAmount: {
     fontSize: THEME.typography.sizes.xxxl,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
     letterSpacing: -0.5,
-    marginVertical: 4,
+    marginTop: 4,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -131,7 +113,7 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.lavenderLight,
     padding: 4,
     borderRadius: THEME.borderRadius.full,
-    marginVertical: THEME.spacing.md,
+    marginTop: THEME.spacing.md,
   },
   tabButton: {
     flex: 1,
@@ -151,67 +133,5 @@ const styles = StyleSheet.create({
   },
   activeTabText: {
     color: THEME.colors.textWhite,
-  },
-  bankCard: {
-    backgroundColor: THEME.colors.card,
-    borderRadius: THEME.borderRadius.lg,
-    padding: THEME.spacing.base,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    ...THEME.shadows.card,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bankIdentity: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: THEME.spacing.md,
-  },
-  bankIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: THEME.colors.lavenderLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bankName: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: '700',
-    color: THEME.colors.textPrimary,
-  },
-  accountType: {
-    fontSize: THEME.typography.sizes.xs,
-    color: THEME.colors.textSecondary,
-  },
-  cardNumberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: THEME.spacing.md,
-    paddingTop: THEME.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: THEME.colors.borderLight,
-  },
-  cardNumberText: {
-    fontSize: THEME.typography.sizes.sm,
-    fontWeight: '600',
-    color: THEME.colors.textSecondary,
-    letterSpacing: 2,
-  },
-  cardChip: {
-    width: 28,
-    height: 20,
-    borderRadius: 4,
-    backgroundColor: '#E4DFD3',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  chipLine: {
-    height: 1,
-    backgroundColor: '#C5BCAE',
   },
 });

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -21,9 +22,20 @@ import type {
   TransactionCategory,
   SavingsGoal,
   BankAccount,
+  RefundTrackerItem,
+  WarrantyVaultItem,
+  SplitSettlementItem,
 } from './FRONTEND/src/types/finance.ts';
 import { simulatePurchaseScenarios } from './FRONTEND/src/services/simulator.ts';
-import { queryLocalAssistant } from './FRONTEND/src/services/assistantEngine.ts';
+import { calculateTotalExpenses } from './FRONTEND/src/services/financeEngine.ts';
+import { detectRecurringPayments } from './FRONTEND/src/services/recurringDetector.ts';
+import {
+  fetchAndParseGmailInbox,
+  answerAssistantWithGemini,
+  parsePurchasePlanWithGemini,
+  formatGeminiError,
+  hasConfiguredGeminiKey,
+} from './src/backend/geminiOnlineEngine.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -103,12 +115,14 @@ async function startServer() {
     next();
   });
 
-  // Health & Security Status Endpoint
+  // Health & Online AI Status Endpoint
   app.get('/api/health', (_req: Request, res: Response) => {
     const db = loadDatabase();
     res.json({
       status: 'ok',
-      app: 'CashCompass Full-Stack Engine',
+      app: 'CashCompass Cloud AI & Gmail Sync Engine',
+      aiModel: 'gemini-3.8-flash',
+      geminiConfigured: hasConfiguredGeminiKey(),
       jwtKeyBits: db.jwtSecretHex.length * 4,
       pbkdf2Iterations: 210000,
       registeredAccounts: db.users.length,
@@ -176,11 +190,13 @@ async function startServer() {
     const vault = createDefaultVault(userId);
     if (startFresh) {
       vault.transactions = [];
+      vault.startingSalary = 0;
+      vault.pocketMoney = 0;
       vault.accounts = [
         {
           id: 'acc_hdfc_01',
-          name: 'Primary Savings',
-          bankName: 'HDFC Bank',
+          name: 'Salary & UPI',
+          bankName: 'Primary Account',
           accountNumberMasked: '•••• 4312',
           balance: 0,
           type: 'SAVINGS',
@@ -189,8 +205,8 @@ async function startServer() {
         },
         {
           id: 'acc_sbi_02',
-          name: 'Secondary Savings',
-          bankName: 'SBI Bank',
+          name: 'Savings Reserve',
+          bankName: 'Savings Account',
           accountNumberMasked: '•••• 8821',
           balance: 0,
           type: 'SAVINGS',
@@ -287,6 +303,75 @@ async function startServer() {
         createdAt: demoUser.createdAt,
       },
       vault: db.vaults[demoUser.id],
+    });
+  });
+
+  // Google Sign-In Session Bridge (links Google Identity to CashCompass user vault)
+  app.post('/api/auth/google', async (req: Request, res: Response) => {
+    const gmailAccessToken =
+      typeof req.body?.accessToken === 'string' ? req.body.accessToken.trim() : '';
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const rawName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim() : '';
+
+    if (!gmailAccessToken || !rawEmail) {
+      res.status(400).json({ error: 'Valid Google email and token are required.' });
+      return;
+    }
+
+    // Verify token against Google userinfo/tokeninfo so identity cannot be spoofed
+    try {
+      const verifyRes = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(gmailAccessToken)}`
+      );
+      if (!verifyRes.ok) {
+        res.status(401).json({ error: 'Google token verification failed. Please sign in again.' });
+        return;
+      }
+      const tokenInfo = (await verifyRes.json()) as { email?: string };
+      if (tokenInfo.email && tokenInfo.email.toLowerCase() !== rawEmail) {
+        res.status(401).json({ error: 'Google account email mismatch.' });
+        return;
+      }
+    } catch {
+      res.status(502).json({ error: 'Unable to verify Google Sign-In token.' });
+      return;
+    }
+
+    const db = loadDatabase();
+    let user = db.users.find((u) => u.email === rawEmail);
+    if (!user) {
+      const randomPass = hashPasswordSync(crypto.randomBytes(24).toString('hex'));
+      const userId = `usr_ggl_${crypto.randomBytes(6).toString('hex')}`;
+      user = {
+        id: userId,
+        fullName: rawName || rawEmail.split('@')[0] || 'User',
+        email: rawEmail,
+        passwordHashHex: randomPass.hashHex,
+        saltHex: randomPass.saltHex,
+        iterations: randomPass.iterations,
+        ageConfirmed18Plus: true,
+        emailDigestOptIn: false,
+        createdAt: new Date().toISOString(),
+      };
+      db.users.push(user);
+      db.vaults[user.id] = createDefaultVault(user.id);
+      saveDatabase(db);
+    } else if (!db.vaults[user.id]) {
+      db.vaults[user.id] = createDefaultVault(user.id);
+      saveDatabase(db);
+    }
+
+    const jwtToken = signJwtHs256(user, db.jwtSecretHex);
+    res.json({
+      token: jwtToken,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        emailDigestOptIn: user.emailDigestOptIn,
+        createdAt: user.createdAt,
+      },
+      vault: db.vaults[user.id],
     });
   });
 
@@ -389,6 +474,13 @@ async function startServer() {
     };
 
     vault.transactions = [created, ...vault.transactions];
+    if (created.type === 'INCOME') {
+      if (created.category === 'Salary') {
+        vault.startingSalary = Math.max(0, (vault.startingSalary || 0) + created.amount);
+      } else {
+        vault.pocketMoney = Math.max(0, (vault.pocketMoney || 0) + created.amount);
+      }
+    }
     vault.accounts = vault.accounts.map((acc) => {
       if (acc.id === created.accountId) {
         const delta = created.type === 'INCOME' ? created.amount : -created.amount;
@@ -402,6 +494,69 @@ async function startServer() {
 
     res.status(201).json({ transaction: created, vault });
   });
+
+  app.patch('/api/finance/income-config', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const db = loadDatabase();
+    const vault = db.vaults[req.auth!.sub] || createDefaultVault(req.auth!.sub);
+    if (typeof req.body?.startingSalary === 'number' && !Number.isNaN(req.body.startingSalary)) {
+      vault.startingSalary = Math.max(0, req.body.startingSalary);
+    }
+    if (typeof req.body?.pocketMoney === 'number' && !Number.isNaN(req.body.pocketMoney)) {
+      vault.pocketMoney = Math.max(0, req.body.pocketMoney);
+    }
+    vault.updatedAt = new Date().toISOString();
+    db.vaults[req.auth!.sub] = vault;
+    saveDatabase(db);
+    res.json({
+      startingSalary: vault.startingSalary,
+      pocketMoney: vault.pocketMoney,
+      vault,
+    });
+  });
+
+  app.post('/api/finance/categories', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const db = loadDatabase();
+    const vault = db.vaults[req.auth!.sub] || createDefaultVault(req.auth!.sub);
+    const rawName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    const rawColor = typeof req.body?.color === 'string' ? req.body.color.trim() : '#7654E8';
+    if (!rawName || rawName.length > 32) {
+      res.status(400).json({ error: 'Category name must be 1–32 characters.' });
+      return;
+    }
+    vault.customCategories = Array.isArray(vault.customCategories) ? vault.customCategories : [];
+    const existingIdx = vault.customCategories.findIndex(
+      (c) => c.name.toLowerCase() === rawName.toLowerCase()
+    );
+    if (existingIdx >= 0) {
+      vault.customCategories[existingIdx] = { name: rawName, color: rawColor };
+    } else {
+      vault.customCategories.push({ name: rawName, color: rawColor });
+    }
+    vault.updatedAt = new Date().toISOString();
+    db.vaults[req.auth!.sub] = vault;
+    saveDatabase(db);
+    res.status(201).json({ customCategories: vault.customCategories, vault });
+  });
+
+  app.delete(
+    '/api/finance/categories/:name',
+    requireAuth,
+    (req: AuthenticatedRequest, res: Response) => {
+      const db = loadDatabase();
+      const vault = db.vaults[req.auth!.sub];
+      if (!vault) {
+        res.status(404).json({ error: 'Vault not found.' });
+        return;
+      }
+      const targetName = String(req.params.name || '').trim().toLowerCase();
+      vault.customCategories = (vault.customCategories || []).filter(
+        (c) => c.name.toLowerCase() !== targetName
+      );
+      vault.updatedAt = new Date().toISOString();
+      saveDatabase(db);
+      res.json({ customCategories: vault.customCategories, vault });
+    }
+  );
 
   // Statement Import with Cross-Account Deduplication & UPI Bank Auto-Discovery (Requirement #1)
   app.post('/api/finance/import', requireAuth, (req: AuthenticatedRequest, res: Response) => {
@@ -475,10 +630,17 @@ async function startServer() {
         b.date.localeCompare(a.date)
       );
 
-      // Update per-account balances (INCOME adds, EXPENSE subtracts, Self TRANSFER is neutral across combined wealth)
+      // Update per-account balances and sync imported INCOME credits into Starting Salary / Pocket Money
       const deltaByAcc = new Map<string, number>();
       for (const tx of uniqueAdded) {
         if (tx.type === 'TRANSFER') continue;
+        if (tx.type === 'INCOME') {
+          if (tx.category === 'Salary') {
+            vault.startingSalary = Math.max(0, (vault.startingSalary || 0) + tx.amount);
+          } else {
+            vault.pocketMoney = Math.max(0, (vault.pocketMoney || 0) + tx.amount);
+          }
+        }
         const delta = tx.type === 'INCOME' ? tx.amount : -tx.amount;
         deltaByAcc.set(tx.accountId, (deltaByAcc.get(tx.accountId) || 0) + delta);
       }
@@ -643,11 +805,13 @@ async function startServer() {
     res.json({ vault: fresh });
   });
 
-  // Deterministic Purchase Simulator & Assistant API endpoints
+  // Deterministic Purchase Simulator + Online Gemini AI Plan Parser & Assistant
   app.post('/api/simulator/evaluate', requireAuth, (req: AuthenticatedRequest, res: Response) => {
     const db = loadDatabase();
     const vault = db.vaults[req.auth!.sub] || createDefaultVault(req.auth!.sub);
-    const totalBalance = vault.accounts.reduce((s, a) => s + a.balance, 0);
+    const totalIncome = Math.max(0, (vault.startingSalary || 0) + (vault.pocketMoney || 0));
+    const totalExpenses = calculateTotalExpenses(vault.transactions);
+    const totalBalance = totalIncome - totalExpenses;
     const scenarios = simulatePurchaseScenarios(
       {
         itemName: String(req.body?.itemName || 'Planned Purchase'),
@@ -662,16 +826,344 @@ async function startServer() {
     res.json({ scenarios });
   });
 
-  app.post('/api/assistant/ask', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  app.post(
+    '/api/simulator/parse-plan',
+    requireAuth,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const db = loadDatabase();
+        const vault = db.vaults[req.auth!.sub] || createDefaultVault(req.auth!.sub);
+        const totalIncome = Math.max(0, (vault.startingSalary || 0) + (vault.pocketMoney || 0));
+        const recurringNames = detectRecurringPayments(vault.transactions).map((r) => r.name);
+        const plan = await parsePurchasePlanWithGemini(
+          String(req.body?.prompt || ''),
+          totalIncome,
+          recurringNames
+        );
+        res.json(plan);
+      } catch (err: any) {
+        const formatted = formatGeminiError(err);
+        res.status(formatted.status).json({ error: formatted.message });
+      }
+    }
+  );
+
+  app.post(
+    '/api/assistant/ask',
+    requireAuth,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const db = loadDatabase();
+        const vault = db.vaults[req.auth!.sub] || createDefaultVault(req.auth!.sub);
+        const totalIncome = Math.max(0, (vault.startingSalary || 0) + (vault.pocketMoney || 0));
+        const totalExpenses = calculateTotalExpenses(vault.transactions);
+        const totalBalance = totalIncome - totalExpenses;
+        const reply = await answerAssistantWithGemini(
+          String(req.body?.query || ''),
+          vault,
+          totalIncome,
+          totalExpenses,
+          totalBalance
+        );
+        res.json({ reply });
+      } catch (err: any) {
+        const formatted = formatGeminiError(err);
+        res.status(formatted.status).json({ error: formatted.message });
+      }
+    }
+  );
+
+  // ============================================================================
+  // GMAIL DIRECT FETCH & SMART RADAR ROUTES (Online Features)
+  // ============================================================================
+
+  app.post(
+    '/api/gmail/sync',
+    requireAuth,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const gmailTokenHeader = req.headers['x-gmail-access-token'];
+      const gmailToken =
+        (typeof gmailTokenHeader === 'string' && gmailTokenHeader.trim()) ||
+        (typeof req.body?.gmailAccessToken === 'string' && req.body.gmailAccessToken.trim()) ||
+        '';
+
+      if (!gmailToken) {
+        res.status(401).json({
+          error: 'Gmail connection required. Please sign in with Google to fetch emails.',
+        });
+        return;
+      }
+
+      const filterPreset =
+        req.body?.filterPreset === 'receipts' || req.body?.filterPreset === 'refunds'
+          ? req.body.filterPreset
+          : 'all';
+      const previewOnly = Boolean(req.body?.previewOnly);
+
+      try {
+        const db = loadDatabase();
+        const vault = db.vaults[req.auth!.sub] || createDefaultVault(req.auth!.sub);
+        const primaryAccountId = vault.accounts[0]?.id || 'acc_hdfc_01';
+
+        const extracted = await fetchAndParseGmailInbox(
+          gmailToken,
+          filterPreset,
+          primaryAccountId
+        );
+
+        if (previewOnly) {
+          res.json({
+            scannedEmails: extracted.scannedEmails,
+            transactions: extracted.transactions,
+            discoveredAccounts: extracted.discoveredAccounts,
+            refundItems: extracted.refundItems,
+            warrantyItems: extracted.warrantyItems,
+            priceCreepAlerts: extracted.priceCreepAlerts,
+          });
+          return;
+        }
+
+        // Merge discovered accounts
+        let newAccountsLinked = 0;
+        for (const disc of extracted.discoveredAccounts) {
+          const last4 = disc.accountNumberMasked.slice(-4);
+          const exists = vault.accounts.find(
+            (a) => a.id === disc.id || (last4.length === 4 && a.accountNumberMasked.endsWith(last4))
+          );
+          if (!exists) {
+            vault.accounts.push(disc);
+            newAccountsLinked++;
+          }
+        }
+
+        // Deduplicate & merge transactions
+        const seen = new Set(vault.transactions.map((t) => normalizeTxFingerprint(t)));
+        const uniqueAdded: Transaction[] = [];
+        let duplicatesSkipped = 0;
+
+        for (const tx of extracted.transactions) {
+          const fp = normalizeTxFingerprint(tx);
+          if (seen.has(fp)) {
+            duplicatesSkipped++;
+            continue;
+          }
+          seen.add(fp);
+          uniqueAdded.push(tx);
+        }
+
+        if (uniqueAdded.length > 0) {
+          vault.transactions = [...uniqueAdded, ...vault.transactions].sort((a, b) =>
+            b.date.localeCompare(a.date)
+          );
+          for (const tx of uniqueAdded) {
+            if (tx.type === 'INCOME') {
+              if (tx.category === 'Salary') {
+                vault.startingSalary = Math.max(0, (vault.startingSalary || 0) + tx.amount);
+              } else {
+                vault.pocketMoney = Math.max(0, (vault.pocketMoney || 0) + tx.amount);
+              }
+            }
+          }
+        }
+
+        // Merge newly extracted refunds, warranties & price alerts without duplicating
+        const existingRefundKeys = new Set(
+          (vault.refundItems || []).map((r) => `${r.merchant.toLowerCase()}|${r.amount}`)
+        );
+        for (const r of extracted.refundItems) {
+          const key = `${r.merchant.toLowerCase()}|${r.amount}`;
+          if (!existingRefundKeys.has(key)) {
+            vault.refundItems = [r, ...(vault.refundItems || [])];
+            existingRefundKeys.add(key);
+          }
+        }
+
+        // Auto-match any PENDING refunds against incoming credits
+        vault.refundItems = (vault.refundItems || []).map((r) => {
+          if (r.status === 'CREDITED') return r;
+          const matchedCredit = vault.transactions.some(
+            (t) =>
+              t.type === 'INCOME' &&
+              Math.abs(t.amount - r.amount) <= 2 &&
+              t.date >= r.initiatedDate
+          );
+          return matchedCredit ? { ...r, status: 'CREDITED' } : r;
+        });
+
+        const existingWarKeys = new Set(
+          (vault.warrantyItems || []).map((w) => w.productName.toLowerCase())
+        );
+        for (const w of extracted.warrantyItems) {
+          if (!existingWarKeys.has(w.productName.toLowerCase())) {
+            vault.warrantyItems = [w, ...(vault.warrantyItems || [])];
+            existingWarKeys.add(w.productName.toLowerCase());
+          }
+        }
+
+        const existingAlertKeys = new Set(
+          (vault.priceCreepAlerts || []).map((p) => `${p.serviceName.toLowerCase()}|${p.newAmount}`)
+        );
+        for (const p of extracted.priceCreepAlerts) {
+          const key = `${p.serviceName.toLowerCase()}|${p.newAmount}`;
+          if (!existingAlertKeys.has(key)) {
+            vault.priceCreepAlerts = [p, ...(vault.priceCreepAlerts || [])];
+            existingAlertKeys.add(key);
+          }
+        }
+
+        vault.lastGmailSyncAt = new Date().toISOString();
+        vault.updatedAt = vault.lastGmailSyncAt;
+        db.vaults[req.auth!.sub] = vault;
+        saveDatabase(db);
+
+        res.json({
+          scannedEmails: extracted.scannedEmails,
+          importedCount: uniqueAdded.length,
+          duplicatesSkipped,
+          newAccountsLinked,
+          refundsFound: extracted.refundItems.length,
+          warrantiesFound: extracted.warrantyItems.length,
+          priceAlertsFound: extracted.priceCreepAlerts.length,
+          vault,
+        });
+      } catch (err: any) {
+        const msg = String(err?.message || 'Failed to sync Gmail messages.');
+        const isAuthErr = msg.toLowerCase().includes('authorization') || msg.toLowerCase().includes('sign in');
+        res.status(isAuthErr ? 401 : 500).json({ error: msg });
+      }
+    }
+  );
+
+  // Smart Radar Interactive Actions (Refunds, Warranties, Split Settlements)
+  app.post('/api/smart-radar/refunds/:id/toggle', requireAuth, (req: AuthenticatedRequest, res: Response) => {
     const db = loadDatabase();
-    const vault = db.vaults[req.auth!.sub] || createDefaultVault(req.auth!.sub);
-    const totalBalance = vault.accounts.reduce((s, a) => s + a.balance, 0);
-    const reply = queryLocalAssistant(
-      String(req.body?.query || ''),
-      vault.transactions,
-      totalBalance
+    const vault = db.vaults[req.auth!.sub];
+    if (!vault) {
+      res.status(404).json({ error: 'Vault not found.' });
+      return;
+    }
+    const targetId = String(req.params.id);
+    vault.refundItems = (vault.refundItems || []).map((r) =>
+      r.id === targetId
+        ? { ...r, status: r.status === 'PENDING' ? 'CREDITED' : 'PENDING' }
+        : r
     );
-    res.json({ reply });
+    vault.updatedAt = new Date().toISOString();
+    saveDatabase(db);
+    res.json({ vault });
+  });
+
+  app.post('/api/smart-radar/refunds', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const db = loadDatabase();
+    const vault = db.vaults[req.auth!.sub];
+    if (!vault) {
+      res.status(404).json({ error: 'Vault not found.' });
+      return;
+    }
+    const merchant = String(req.body?.merchant || '').trim();
+    const title = String(req.body?.title || '').trim() || `${merchant} Refund`;
+    const amount = Number(req.body?.amount) || 0;
+    if (!merchant || amount <= 0) {
+      res.status(400).json({ error: 'Merchant and positive amount required.' });
+      return;
+    }
+    const today = new Date();
+    const expected = new Date(today.getTime() + 5 * 86400000).toISOString().split('T')[0];
+    const item: RefundTrackerItem = {
+      id: `ref_usr_${Date.now()}`,
+      merchant,
+      title,
+      amount,
+      initiatedDate: today.toISOString().split('T')[0],
+      expectedByDate: expected,
+      status: 'PENDING',
+    };
+    vault.refundItems = [item, ...(vault.refundItems || [])];
+    vault.updatedAt = new Date().toISOString();
+    saveDatabase(db);
+    res.status(201).json({ vault });
+  });
+
+  app.post('/api/smart-radar/warranties', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const db = loadDatabase();
+    const vault = db.vaults[req.auth!.sub];
+    if (!vault) {
+      res.status(404).json({ error: 'Vault not found.' });
+      return;
+    }
+    const productName = String(req.body?.productName || '').trim();
+    const merchant = String(req.body?.merchant || 'Online Store').trim();
+    const amount = Math.max(0, Number(req.body?.amount) || 0);
+    if (!productName) {
+      res.status(400).json({ error: 'Product name required.' });
+      return;
+    }
+    const now = new Date();
+    const retDate = new Date(now.getTime() + 10 * 86400000).toISOString().split('T')[0];
+    const warDate = new Date(now.getTime() + 365 * 86400000).toISOString().split('T')[0];
+    const item: WarrantyVaultItem = {
+      id: `war_usr_${Date.now()}`,
+      productName,
+      merchant,
+      purchaseDate: now.toISOString().split('T')[0],
+      amount,
+      returnWindowEnds: retDate,
+      warrantyExpires: warDate,
+    };
+    vault.warrantyItems = [item, ...(vault.warrantyItems || [])];
+    vault.updatedAt = new Date().toISOString();
+    saveDatabase(db);
+    res.status(201).json({ vault });
+  });
+
+  app.post('/api/smart-radar/splits', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const db = loadDatabase();
+    const vault = db.vaults[req.auth!.sub];
+    if (!vault) {
+      res.status(404).json({ error: 'Vault not found.' });
+      return;
+    }
+    const title = String(req.body?.title || '').trim();
+    const friendName = String(req.body?.friendName || '').trim();
+    const totalBillAmount = Math.max(0, Number(req.body?.totalBillAmount) || 0);
+    const owedToYouAmount = Math.max(0, Number(req.body?.owedToYouAmount) || Math.round(totalBillAmount / 2));
+    if (!title || !friendName || owedToYouAmount <= 0) {
+      res.status(400).json({ error: 'Title, friend name, and split amount required.' });
+      return;
+    }
+    const item: SplitSettlementItem = {
+      id: `spl_usr_${Date.now()}`,
+      title,
+      friendName,
+      totalBillAmount: totalBillAmount || owedToYouAmount * 2,
+      owedToYouAmount,
+      date: new Date().toISOString().split('T')[0],
+      status: 'PENDING',
+    };
+    vault.splitItems = [item, ...(vault.splitItems || [])];
+    vault.updatedAt = new Date().toISOString();
+    saveDatabase(db);
+    res.status(201).json({ vault });
+  });
+
+  app.post('/api/smart-radar/splits/:id/settle', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+    const db = loadDatabase();
+    const vault = db.vaults[req.auth!.sub];
+    if (!vault) {
+      res.status(404).json({ error: 'Vault not found.' });
+      return;
+    }
+    const targetId = String(req.params.id);
+    const targetSplit = (vault.splitItems || []).find((s) => s.id === targetId);
+    if (targetSplit && targetSplit.status === 'PENDING') {
+      vault.pocketMoney = Math.max(0, (vault.pocketMoney || 0) + targetSplit.owedToYouAmount);
+    }
+    vault.splitItems = (vault.splitItems || []).map((s) =>
+      s.id === targetId ? { ...s, status: 'SETTLED' } : s
+    );
+    vault.updatedAt = new Date().toISOString();
+    saveDatabase(db);
+    res.json({ vault });
   });
 
   // ============================================================================

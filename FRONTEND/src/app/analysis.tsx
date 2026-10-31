@@ -4,11 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  ShieldCheck,
-  AlertCircle,
-  TrendingUp,
   Database,
-  Info,
   CheckCircle2,
 } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
@@ -64,7 +60,7 @@ export default function AnalysisScreen() {
         >
           <ArrowLeft size={20} color={THEME.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Financial Analysis & Limits</Text>
+        <Text style={styles.headerTitle}>Financial Analysis</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -73,80 +69,75 @@ export default function AnalysisScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Data Quality & Coverage Badge */}
+        {/* Data Coverage Badge */}
         <View style={styles.coverageCard}>
           <View style={styles.coverageTop}>
             <Database size={18} color={THEME.colors.primary} />
             <Text style={styles.coverageBadgeText}>
               {diag.hasThreeMonthsCoverage
-                ? `High Data Coverage (${diag.distinctMonths.length} Months Verified)`
-                : `Limited Data (${diag.distinctMonths.length} Month — <3 Months Guardrail Active)`}
+                ? `Data Coverage: ${diag.distinctMonths.length} Months`
+                : `Limited Data (${diag.distinctMonths.length} Month)`}
             </Text>
           </View>
-          <Text style={styles.coverageDescription}>
-            Calculated across {transactions.length} multi-account transactions. Expected Income Range (P15–P85):{' '}
-            {formatINR(diag.incomeP15)} – {formatINR(diag.incomeP85)}.
-            {diag.excludedBonusNote ? ` ${diag.excludedBonusNote}` : ''}
-          </Text>
         </View>
 
-        {/* Holdout Forecast Backtest Track Record (Extra Point #2) */}
+        {/* Holdout Forecast Backtest Track Record */}
         {diag.holdoutBacktest && (
           <View style={styles.card}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <CheckCircle2 size={16} color={THEME.colors.success} />
               <Text style={[styles.cardTitle, { marginBottom: 0 }]}>
-                Forecast Track Record ({diag.holdoutBacktest.monthLabel} Holdout Check)
+                Forecast Accuracy ({diag.holdoutBacktest.monthLabel})
               </Text>
             </View>
             <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Prior-Months Forecasted Ending Balance</Text>
+              <Text style={styles.metricLabel}>Projected Balance</Text>
               <Text style={styles.metricValue}>
                 {formatINR(diag.holdoutBacktest.predictedEndBalance)}
               </Text>
             </View>
             <View style={styles.metricRow}>
-              <Text style={styles.metricLabel}>Actual Recorded Ending Balance</Text>
+              <Text style={styles.metricLabel}>Actual Balance</Text>
               <Text style={[styles.metricValue, { color: THEME.colors.primary }]}>
                 {formatINR(diag.holdoutBacktest.actualEndBalance)}
               </Text>
             </View>
             <View style={[styles.metricRow, styles.totalRow]}>
-              <Text style={styles.totalLabel}>Forecast Accuracy Score</Text>
+              <Text style={styles.totalLabel}>Accuracy</Text>
               <Text style={[styles.totalValue, { color: THEME.colors.success }]}>
-                {diag.holdoutBacktest.accuracyPct}% (±{formatINR(diag.holdoutBacktest.errorAmount)})
+                {diag.holdoutBacktest.accuracyPct}%
               </Text>
             </View>
           </View>
         )}
 
-        {/* Mathematical Composition Card */}
+        {/* Monthly Cash Flow Composition */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Monthly Cash Flow Composition</Text>
-          
+          <Text style={styles.cardTitle}>Monthly Cash Flow</Text>
+
           <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Baseline Monthly Income</Text>
+            <Text style={styles.metricLabel}>Total Income</Text>
             <Text style={[styles.metricValue, { color: THEME.colors.success }]}>
               +{formatINR(totalIncome)}
             </Text>
           </View>
           <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Committed Recurring Outflow</Text>
+            <Text style={styles.metricLabel}>Recurring Commitments</Text>
             <Text style={[styles.metricValue, { color: THEME.colors.danger }]}>
               −{formatINR(totalRecurringMonthly)}
             </Text>
           </View>
           <View style={styles.metricRow}>
-            <Text style={styles.metricLabel}>Variable Discretionary Living</Text>
+            <Text style={styles.metricLabel}>Variable Spending</Text>
             <Text style={[styles.metricValue, { color: THEME.colors.danger }]}>
               −{formatINR(variableLivingCost)}
             </Text>
           </View>
 
           <View style={[styles.metricRow, styles.totalRow]}>
-            <Text style={styles.totalLabel}>Projected Net Monthly Surplus</Text>
+            <Text style={styles.totalLabel}>Total Balance</Text>
             <Text style={styles.totalValue}>
-              +{formatINR(totalIncome - totalExpenses)}
+              {formatINR(totalBalance)}
             </Text>
           </View>
         </View>
@@ -159,39 +150,14 @@ export default function AnalysisScreen() {
             <View style={styles.runwayBox}>
               <Text style={styles.runwayLabel}>Monthly Burn Rate</Text>
               <Text style={styles.runwayValue}>{forecast.burnRatePercentage}%</Text>
-              <Text style={styles.runwaySub}>Of recorded income</Text>
             </View>
 
             <View style={styles.runwayBox}>
-              <Text style={styles.runwayLabel}>Discretionary Pool</Text>
+              <Text style={styles.runwayLabel}>Available Pool</Text>
               <Text style={styles.runwayValue}>
                 {formatINR(Math.max(0, totalBalance - 15000))}
               </Text>
-              <Text style={styles.runwaySub}>Above ₹15k reserve</Text>
             </View>
-          </View>
-        </View>
-
-        {/* Explicit Model Limitations & Assumptions */}
-        <View style={styles.limitationsCard}>
-          <View style={styles.limitationHeader}>
-            <Info size={16} color="#B45309" />
-            <Text style={styles.limitationTitle}>Model Limitations & Assumptions</Text>
-          </View>
-
-          <View style={styles.limitationList}>
-            <Text style={styles.limitationItem}>
-              1. <Text style={{ fontWeight: '700' }}>Steady Income Assumption:</Text> Forecasts assume payroll deposits recur on predictable monthly cycles.
-            </Text>
-            <Text style={styles.limitationItem}>
-              2. <Text style={{ fontWeight: '700' }}>Unbilled Charges:</Text> Offline forecasting does not inspect pending credit card merchant settlements.
-            </Text>
-            <Text style={styles.limitationItem}>
-              3. <Text style={{ fontWeight: '700' }}>Inflation Invariance:</Text> Simulations assume constant product pricing over multi-month horizons.
-            </Text>
-            <Text style={styles.limitationItem}>
-              4. <Text style={{ fontWeight: '700' }}>100% Privacy Boundary:</Text> Data is neither trained on external models nor shared beyond your physical device.
-            </Text>
           </View>
         </View>
 
@@ -251,17 +217,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 4,
   },
   coverageBadgeText: {
     fontSize: THEME.typography.sizes.xs,
     fontWeight: '700',
     color: THEME.colors.primary,
-  },
-  coverageDescription: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    lineHeight: 16,
   },
   card: {
     backgroundColor: THEME.colors.card,
@@ -327,36 +287,6 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.lg,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
-    marginVertical: 4,
-  },
-  runwaySub: {
-    fontSize: 9,
-    color: THEME.colors.textMuted,
-  },
-  limitationsCard: {
-    backgroundColor: '#FEF6EC',
-    borderRadius: THEME.borderRadius.lg,
-    padding: THEME.spacing.base,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  limitationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: THEME.spacing.sm,
-  },
-  limitationTitle: {
-    fontSize: THEME.typography.sizes.xs,
-    fontWeight: '700',
-    color: '#92400E',
-  },
-  limitationList: {
-    gap: 8,
-  },
-  limitationItem: {
-    fontSize: 11,
-    color: '#78350F',
-    lineHeight: 16,
+    marginTop: 4,
   },
 });

@@ -12,10 +12,13 @@ import {
   Activity,
   MoreHorizontal,
   ArrowLeftRight,
+  Wallet,
+  Tag,
 } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import { Transaction } from '../types/finance';
-import { CATEGORIES_META } from '../constants/categories';
+import { getCategoryMeta } from '../constants/categories';
+import { useFinance } from '../context/FinanceContext';
 
 interface Props {
   transaction: Transaction;
@@ -23,9 +26,10 @@ interface Props {
 }
 
 export const TransactionItem: React.FC<Props> = ({ transaction, onPress }) => {
+  const { customCategoryColors } = useFinance();
   const isIncome = transaction.type === 'INCOME';
   const isTransfer = transaction.type === 'TRANSFER';
-  const meta = CATEGORIES_META[transaction.category] || CATEGORIES_META.Other;
+  const meta = getCategoryMeta(transaction.category, customCategoryColors);
 
   const renderIcon = () => {
     const size = 18;
@@ -48,12 +52,16 @@ export const TransactionItem: React.FC<Props> = ({ transaction, onPress }) => {
         return <Film size={size} color={color} />;
       case 'Salary':
         return <Briefcase size={size} color={color} />;
+      case 'Pocket Money':
+        return <Wallet size={size} color={color} />;
       case 'Investments':
         return <TrendingUp size={size} color={color} />;
       case 'Healthcare':
         return <Activity size={size} color={color} />;
-      default:
+      case 'Other':
         return <MoreHorizontal size={size} color={color} />;
+      default:
+        return <Tag size={size} color={color} />;
     }
   };
 

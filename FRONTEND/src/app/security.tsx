@@ -28,23 +28,21 @@ import {
 import { THEME } from '../constants/theme';
 import { useFinance } from '../context/FinanceContext';
 import { BottomNavigation, NavTab } from '../components/BottomNavigation';
+import { GoogleSignInButton } from '../../../src/services/googleGmailAuth';
 
 export default function SecurityComplianceScreen() {
   const router = useRouter();
   const {
     user,
-    modelStatus,
-    uploadTokenizerModel,
-    uploadPteModel,
-    updateModelOptimization,
+    gmailConnected,
+    gmailEmail,
+    connectGmailAccount,
+    disconnectGmail,
     rotateJwtSecret,
     updateEmailPreferences,
     deleteAccountPermanently,
     openLegalDoc,
   } = useFinance();
-
-  const tokInputRef = useRef<HTMLInputElement | null>(null);
-  const pteInputRef = useRef<HTMLInputElement | null>(null);
 
   const [ssrfUrl, setSsrfUrl] = useState('http://169.254.169.254/latest/meta-data/');
   const [ssrfResult, setSsrfResult] = useState<{ allowed: boolean; reason: string } | null>(null);
@@ -131,30 +129,6 @@ export default function SecurityComplianceScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Hidden Model Artifact File Inputs */}
-      <input
-        ref={tokInputRef}
-        type="file"
-        accept=".model,.bin"
-        style={{ display: 'none' }}
-        aria-label="Upload SentencePiece tokenizer.model"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) uploadTokenizerModel(f);
-        }}
-      />
-      <input
-        ref={pteInputRef}
-        type="file"
-        accept=".pte"
-        style={{ display: 'none' }}
-        aria-label="Upload ExecuTorch finance_assistant.pte"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) uploadPteModel(f);
-        }}
-      />
-
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -164,7 +138,7 @@ export default function SecurityComplianceScreen() {
         >
           <ArrowLeft size={20} color={THEME.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Llama Runtime & Security Audit</Text>
+        <Text style={styles.headerTitle}>Cloud AI & Security Center</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -173,120 +147,44 @@ export default function SecurityComplianceScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* 1. ON-DEVICE LLAMA (.pte) & TOKENIZER (.model) RUNTIME */}
+        {/* 1. CLOUD GEMINI AI & GMAIL READ-ONLY CONNECTION */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <Cpu size={18} color={THEME.colors.primary} />
-            <Text style={styles.cardTitle}>
-              Llama (finance_assistant.pte) & Tokenizer Engine
-            </Text>
+            <Text style={styles.cardTitle}>Cloud Gemini AI & Gmail Sync</Text>
           </View>
-          <Text style={styles.cardSub}>
-            Bundled release model-V1 SentencePiece binary is auto-hydrated inside a dedicated WebWorker with Prefix KV-Cache and INT4-XNNPACK optimization.
-          </Text>
 
           <View style={styles.statusGrid}>
             <View style={styles.statusBox}>
-              <Text style={styles.statusLabel}>tokenizer.model</Text>
-              <Text style={styles.statusVal}>
-                {modelStatus.loaded
-                  ? `${modelStatus.vocabSize.toLocaleString()} tokens`
-                  : 'Standby'}
-              </Text>
-              <Text style={styles.statusMeta}>
-                {modelStatus.sizeMB} MB • {modelStatus.elapsedMs}ms load
-              </Text>
+              <Text style={styles.statusLabel}>Cloud AI Engine</Text>
+              <Text style={styles.statusVal}>gemini-3.8-flash</Text>
+              <Text style={styles.statusMeta}>Server-Side Proxy Active</Text>
             </View>
             <View style={styles.statusBox}>
-              <Text style={styles.statusLabel}>finance_assistant.pte</Text>
+              <Text style={styles.statusLabel}>Gmail Sync</Text>
               <Text style={styles.statusVal}>
-                {modelStatus.pteFileName
-                  ? modelStatus.pteVerified
-                    ? 'Verified EH00'
-                    : 'Loaded'
-                  : '770 MB Spec'}
+                {gmailConnected ? 'Connected' : 'Not Linked'}
               </Text>
-              <Text style={styles.statusMeta}>{modelStatus.quantizationMode}</Text>
+              <Text style={styles.statusMeta}>
+                {gmailConnected ? gmailEmail || 'Read-Only' : 'In-Memory Token'}
+              </Text>
             </View>
           </View>
 
-          {/* Speed Optimization Toggles */}
-          <View style={styles.toggleRow}>
-            <TouchableOpacity
-              style={[
-                styles.optChip,
-                modelStatus.quantizationMode === 'INT4-XNNPACK' && styles.optChipActive,
-              ]}
-              onPress={() =>
-                updateModelOptimization({
-                  quantizationMode:
-                    modelStatus.quantizationMode === 'INT4-XNNPACK'
-                      ? 'INT8-SIMD'
-                      : 'INT4-XNNPACK',
-                })
-              }
-            >
-              <Text
-                style={[
-                  styles.optChipText,
-                  modelStatus.quantizationMode === 'INT4-XNNPACK' && styles.optChipTextActive,
-                ]}
-              >
-                {modelStatus.quantizationMode}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.optChip, modelStatus.kvCacheEnabled && styles.optChipActive]}
-              onPress={() =>
-                updateModelOptimization({ kvCacheEnabled: !modelStatus.kvCacheEnabled })
-              }
-            >
-              <Text
-                style={[
-                  styles.optChipText,
-                  modelStatus.kvCacheEnabled && styles.optChipTextActive,
-                ]}
-              >
-                KV-Cache: {modelStatus.kvCacheEnabled ? 'ON' : 'OFF'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.optChip, modelStatus.speculativeBatching && styles.optChipActive]}
-              onPress={() =>
-                updateModelOptimization({
-                  speculativeBatching: !modelStatus.speculativeBatching,
-                })
-              }
-            >
-              <Text
-                style={[
-                  styles.optChipText,
-                  modelStatus.speculativeBatching && styles.optChipTextActive,
-                ]}
-              >
-                Speculative: {modelStatus.speculativeBatching ? 'ON' : 'OFF'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.btnPairRow}>
+          {!gmailConnected ? (
+            <GoogleSignInButton
+              onClick={() => connectGmailAccount()}
+              label="Sign in with Google"
+            />
+          ) : (
             <TouchableOpacity
               style={styles.secondaryActionBtn}
-              onPress={() => tokInputRef.current?.click()}
+              onPress={() => disconnectGmail()}
             >
-              <UploadCloud size={13} color={THEME.colors.primary} />
-              <Text style={styles.secondaryActionText}>Verify tokenizer.model</Text>
+              <Mail size={13} color={THEME.colors.primary} />
+              <Text style={styles.secondaryActionText}>Disconnect Gmail Session</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.secondaryActionBtn}
-              onPress={() => pteInputRef.current?.click()}
-            >
-              <UploadCloud size={13} color={THEME.colors.primary} />
-              <Text style={styles.secondaryActionText}>Verify .pte Checksum</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
 
         {/* 2. CRYPTOGRAPHIC JWT & SSRF GUARD */}

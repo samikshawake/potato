@@ -1,5 +1,5 @@
 import type { Transaction, TransactionCategory } from '../types/finance.ts';
-import { CATEGORIES_META } from '../constants/categories.ts';
+import { getCategoryMeta } from '../constants/categories.ts';
 
 export interface CategorySpendingSummary {
   category: TransactionCategory;
@@ -53,30 +53,34 @@ export const calculateNetCashFlow = (transactions: Transaction[]): number => {
 /**
  * Computes category-wise breakdown for the active month with percentage and metadata color
  */
-export const calculateCategorySpending = (transactions: Transaction[]): CategorySpendingSummary[] => {
+export const calculateCategorySpending = (
+  transactions: Transaction[],
+  customColors?: Record<string, string>
+): CategorySpendingSummary[] => {
   const expenseTx = getLatestMonthTransactions(transactions).filter((tx) => tx.type === 'EXPENSE');
   const totalExpense = expenseTx.reduce((sum, tx) => sum + tx.amount, 0);
 
-  const categoryMap: Partial<Record<TransactionCategory, { amount: number; count: number }>> = {};
+  const categoryMap: Record<string, { amount: number; count: number }> = {};
 
   expenseTx.forEach((tx) => {
-    if (!categoryMap[tx.category]) {
-      categoryMap[tx.category] = { amount: 0, count: 0 };
+    const key = tx.category || 'Other';
+    if (!categoryMap[key]) {
+      categoryMap[key] = { amount: 0, count: 0 };
     }
-    categoryMap[tx.category]!.amount += tx.amount;
-    categoryMap[tx.category]!.count += 1;
+    categoryMap[key].amount += tx.amount;
+    categoryMap[key].count += 1;
   });
 
   const results: CategorySpendingSummary[] = Object.keys(categoryMap).map((catKey) => {
-    const category = catKey as TransactionCategory;
-    const item = categoryMap[category]!;
+    const item = categoryMap[catKey];
     const percentage = totalExpense > 0 ? (item.amount / totalExpense) * 100 : 0;
+    const meta = getCategoryMeta(catKey, customColors);
     return {
-      category,
+      category: catKey,
       amount: item.amount,
       percentage: Number(percentage.toFixed(1)),
       transactionCount: item.count,
-      color: CATEGORIES_META[category]?.color || '#9CA3AF',
+      color: meta.color,
     };
   });
 

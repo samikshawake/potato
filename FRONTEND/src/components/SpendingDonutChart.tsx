@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { THEME, formatINR } from '../constants/theme';
 import { CategorySpendingSummary } from '../services/financeEngine';
@@ -10,6 +10,8 @@ interface Props {
   budgetTotal?: number;
   categories: CategorySpendingSummary[];
   title?: string;
+  selectedCategory?: string | null;
+  onSelectCategory?: (category: string) => void;
 }
 
 export const SpendingDonutChart: React.FC<Props> = ({
@@ -17,17 +19,26 @@ export const SpendingDonutChart: React.FC<Props> = ({
   budgetTotal = 105000,
   categories,
   title = 'Spendings & Goals',
+  selectedCategory,
+  onSelectCategory,
 }) => {
   const size = 220;
   const strokeWidth = 14;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
 
-  const percentageUsed = Math.min(100, Math.round((totalSpent / budgetTotal) * 100));
+  const activeCategoryObj = selectedCategory
+    ? categories.find((c) => c.category === selectedCategory)
+    : null;
 
-  // Build segments for top 4 categories + other
+  const centerAmount = activeCategoryObj ? activeCategoryObj.amount : totalSpent;
+  const safeBudget = Math.max(1, budgetTotal);
+  const percentageUsed = activeCategoryObj
+    ? Math.round(activeCategoryObj.percentage)
+    : Math.min(100, Math.round((totalSpent / safeBudget) * 100));
+
   let accumulatedAngle = 0;
-  const segments = categories.slice(0, 4).map((cat) => {
+  const segments = categories.map((cat) => {
     const fraction = cat.percentage / 100;
     const strokeDasharray = `${circumference * fraction} ${circumference * (1 - fraction)}`;
     const strokeDashoffset = -circumference * accumulatedAngle;
@@ -58,39 +69,73 @@ export const SpendingDonutChart: React.FC<Props> = ({
 
           {/* Color Segments */}
           <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
-            {segments.map((seg, i) => (
-              <Circle
-                key={seg.category}
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                stroke={seg.color}
-                strokeWidth={strokeWidth}
-                strokeDasharray={seg.strokeDasharray}
-                strokeDashoffset={seg.strokeDashoffset}
-                strokeLinecap="round"
-                fill="none"
-              />
-            ))}
+            {segments.map((seg) => {
+              const isDimmed =
+                selectedCategory && selectedCategory !== seg.category;
+              return (
+                <Circle
+                  key={seg.category}
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={radius}
+                  stroke={seg.color}
+                  strokeOpacity={isDimmed ? 0.25 : 1}
+                  strokeWidth={
+                    selectedCategory === seg.category ? strokeWidth + 3 : strokeWidth
+                  }
+                  strokeDasharray={seg.strokeDasharray}
+                  strokeDashoffset={seg.strokeDashoffset}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              );
+            })}
           </G>
         </Svg>
 
         {/* Mascot & Numbers Centered inside the Donut Ring */}
         <View style={styles.innerContent}>
           <MascotAvatar size={74} showShades={true} />
-          <Text style={styles.amountText}>{formatINR(totalSpent)}</Text>
-          <Text style={styles.percentageText}>{percentageUsed}% of budget</Text>
+          <Text style={styles.amountText}>{formatINR(centerAmount)}</Text>
+          <Text style={styles.percentageText}>
+            {activeCategoryObj
+              ? `${activeCategoryObj.category} (${percentageUsed}%)`
+              : `${percentageUsed}% of income`}
+          </Text>
         </View>
       </View>
 
-      {/* Category Legend with Colored Dots */}
+      {/* Interactive Category Legend */}
       <View style={styles.legendContainer}>
-        {categories.slice(0, 4).map((cat) => (
-          <View key={cat.category} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
-            <Text style={styles.legendLabel}>{cat.category}</Text>
-          </View>
-        ))}
+        {categories.map((cat) => {
+          const isSelected = selectedCategory === cat.category;
+          if (onSelectCategory) {
+            return (
+              <TouchableOpacity
+                key={cat.category}
+                style={[styles.legendItem, isSelected && styles.legendItemSelected]}
+                onPress={() => onSelectCategory(cat.category)}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
+                <Text
+                  style={[
+                    styles.legendLabel,
+                    isSelected && styles.legendLabelSelected,
+                  ]}
+                >
+                  {cat.category}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+          return (
+            <View key={cat.category} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
+              <Text style={styles.legendLabel}>{cat.category}</Text>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -143,13 +188,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: THEME.spacing.md,
+    gap: 8,
     marginTop: THEME.spacing.md,
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: THEME.borderRadius.full,
+  },
+  legendItemSelected: {
+    backgroundColor: THEME.colors.lavenderLight,
   },
   legendDot: {
     width: 8,
@@ -160,5 +211,9 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.xs,
     fontWeight: '600',
     color: THEME.colors.textSecondary,
+  },
+  legendLabelSelected: {
+    color: THEME.colors.primary,
+    fontWeight: '700',
   },
 });

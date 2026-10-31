@@ -6,6 +6,11 @@ import type {
   BankAccount,
   SavingsGoal,
   TransactionCategory,
+  CustomCategoryItem,
+  RefundTrackerItem,
+  WarrantyVaultItem,
+  PriceCreepAlert,
+  SplitSettlementItem,
 } from '../../FRONTEND/src/types/finance.ts';
 import { DEMO_TRANSACTIONS } from '../../FRONTEND/src/data/demoTransactions.ts';
 import { DEMO_ACCOUNTS } from '../../FRONTEND/src/data/demoAccounts.ts';
@@ -38,6 +43,14 @@ export interface UserFinancialVault {
   mission: SavingsMission;
   reviewedAnomalies: Record<string, 'CONFIRMED' | 'DISMISSED'>;
   cancelledRecurringIds: string[];
+  startingSalary: number;
+  pocketMoney: number;
+  customCategories: CustomCategoryItem[];
+  refundItems: RefundTrackerItem[];
+  warrantyItems: WarrantyVaultItem[];
+  priceCreepAlerts: PriceCreepAlert[];
+  splitItems: SplitSettlementItem[];
+  lastGmailSyncAt?: string;
   updatedAt: string;
 }
 
@@ -458,6 +471,74 @@ export function createDefaultVault(userId: string): UserFinancialVault {
     mission: { ...CURRENT_MISSION },
     reviewedAnomalies: {},
     cancelledRecurringIds: [],
+    startingSalary: 85000,
+    pocketMoney: 20000,
+    customCategories: [],
+    refundItems: [
+      {
+        id: 'ref_demo_01',
+        merchant: 'Swiggy Instamart',
+        title: 'Cancelled Order Refund #SWG-8921',
+        amount: 640,
+        initiatedDate: '2026-10-28',
+        expectedByDate: '2026-11-03',
+        status: 'PENDING',
+        sourceEmailSubject: 'Refund of ₹640 initiated for your cancelled Instamart order',
+      },
+      {
+        id: 'ref_demo_02',
+        merchant: 'IRCTC Rail Connect',
+        title: 'Waitlisted Ticket Auto-Reversal',
+        amount: 1480,
+        initiatedDate: '2026-10-22',
+        expectedByDate: '2026-10-27',
+        status: 'CREDITED',
+        sourceEmailSubject: 'IRCTC e-Ticket Refund Processed',
+      },
+    ],
+    warrantyItems: [
+      {
+        id: 'war_demo_01',
+        productName: 'Sony WF-C700N Wireless Earbuds',
+        merchant: 'Amazon India',
+        purchaseDate: '2026-10-24',
+        amount: 7990,
+        returnWindowEnds: '2026-11-03',
+        warrantyExpires: '2027-10-24',
+        invoiceRef: 'IN-AMZ-408-9921',
+      },
+    ],
+    priceCreepAlerts: [
+      {
+        id: 'pc_demo_01',
+        serviceName: 'Netflix Entertainment Services',
+        previousAmount: 499,
+        newAmount: 649,
+        detectedDate: '2026-10-10',
+        alertType: 'PRICE_HIKE',
+        note: 'Monthly auto-debit rose by ₹150 (+30%) compared to September.',
+      },
+      {
+        id: 'pc_demo_02',
+        serviceName: 'Adobe Creative Cloud Trial',
+        previousAmount: 0,
+        newAmount: 1999,
+        detectedDate: '2026-10-30',
+        alertType: 'FREE_TRIAL_ENDING',
+        note: 'Free trial converts to ₹1,999/mo auto-debit in 2 days.',
+      },
+    ],
+    splitItems: [
+      {
+        id: 'spl_demo_01',
+        title: 'Weekend Dinner at Truffles',
+        friendName: 'Rohan',
+        totalBillAmount: 1860,
+        owedToYouAmount: 930,
+        date: '2026-10-27',
+        status: 'PENDING',
+      },
+    ],
     updatedAt: new Date().toISOString(),
   };
 }
@@ -506,7 +587,52 @@ export function loadDatabase(): DatabaseSchema {
       const raw = fs.readFileSync(DB_FILE, 'utf8');
       const parsed = JSON.parse(raw) as DatabaseSchema;
       if (parsed && Array.isArray(parsed.users) && parsed.vaults) {
+        let migrated = false;
+        for (const v of Object.values(parsed.vaults)) {
+          if (typeof v.startingSalary !== 'number') {
+            v.startingSalary = v.transactions.length > 0 ? 85000 : 0;
+            migrated = true;
+          }
+          if (typeof v.pocketMoney !== 'number') {
+            v.pocketMoney = v.transactions.length > 0 ? 20000 : 0;
+            migrated = true;
+          }
+          if (!Array.isArray(v.customCategories)) {
+            v.customCategories = [];
+            migrated = true;
+          }
+          if (!Array.isArray(v.refundItems)) {
+            v.refundItems = createDefaultVault(v.userId).refundItems;
+            migrated = true;
+          }
+          if (!Array.isArray(v.warrantyItems)) {
+            v.warrantyItems = createDefaultVault(v.userId).warrantyItems;
+            migrated = true;
+          }
+          if (!Array.isArray(v.priceCreepAlerts)) {
+            v.priceCreepAlerts = createDefaultVault(v.userId).priceCreepAlerts;
+            migrated = true;
+          }
+          if (!Array.isArray(v.splitItems)) {
+            v.splitItems = createDefaultVault(v.userId).splitItems;
+            migrated = true;
+          }
+          if (Array.isArray(v.accounts)) {
+            v.accounts = v.accounts.map((acc) => {
+              if (acc.id === 'acc_hdfc_01' && acc.bankName === 'HDFC Bank') {
+                migrated = true;
+                return { ...acc, bankName: 'Primary Account', name: 'Salary & UPI' };
+              }
+              if (acc.id === 'acc_sbi_02' && acc.bankName === 'SBI Bank') {
+                migrated = true;
+                return { ...acc, bankName: 'Savings Account', name: 'Savings Reserve' };
+              }
+              return acc;
+            });
+          }
+        }
         cachedDb = parsed;
+        if (migrated) saveDatabase(cachedDb);
         return cachedDb;
       }
     }

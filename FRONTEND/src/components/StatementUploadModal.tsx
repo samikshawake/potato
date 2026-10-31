@@ -15,26 +15,26 @@ import {
   CheckCircle2,
   X,
   Sparkles,
-  ShieldCheck,
   Building2,
-  MessageSquare,
   ArrowRight,
   TrendingDown,
   TrendingUp,
   Download,
   AlertCircle,
   ArrowLeftRight,
+  Mail,
+  RefreshCw,
 } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import {
   parseOfflineStatementCSV,
   parseUploadedBankStatementFile,
-  buildSamplePdfBlob,
-  SAMPLE_STATEMENTS,
+  parseSmsTextAlert,
   ParsedStatementResult,
 } from '../services/statementParser';
 import { Transaction, BankAccount } from '../types/finance';
 import { useFinance } from '../context/FinanceContext';
+import { GoogleSignInButton } from '../../../src/services/googleGmailAuth';
 
 interface Props {
   visible: boolean;
@@ -47,14 +47,29 @@ export const StatementUploadModal: React.FC<Props> = ({
   onClose,
   onImportComplete,
 }) => {
-  const { accounts, importTransactions } = useFinance();
+  const {
+    accounts,
+    importTransactions,
+    gmailConnected,
+    gmailEmail,
+    connectGmailAccount,
+    disconnectGmail,
+    syncFromGmailInbox,
+  } = useFinance();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'file' | 'sample' | 'custom' | 'sms'>('file');
-  const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    accounts[0]?.id || 'acc_hdfc_01'
-  );
+  const [activeTab, setActiveTab] = useState<'gmail' | 'file' | 'sms'>('gmail');
+  const [gmailFilter, setGmailFilter] = useState<'all' | 'receipts' | 'refunds'>('all');
+  const [isSyncingGmail, setIsSyncingGmail] = useState(false);
+  const [gmailSyncReport, setGmailSyncReport] = useState<{
+    scannedEmails: number;
+    importedCount: number;
+    duplicatesSkipped: number;
+    smartAlerts: number;
+  } | null>(null);
+  const selectedAccountId = accounts[0]?.id || 'acc_hdfc_01';
   const [customCsv, setCustomCsv] = useState('');
+  const [smsText, setSmsText] = useState('');
   const [parsedResult, setParsedResult] = useState<ParsedStatementResult | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isParsingFile, setIsParsingFile] = useState(false);
@@ -63,6 +78,35 @@ export const StatementUploadModal: React.FC<Props> = ({
     duplicatesSkipped: number;
     newAccountsLinked?: number;
   } | null>(null);
+
+  const handleConnectGoogle = async () => {
+    setUploadError(null);
+    setGmailSyncReport(null);
+    const res = await connectGmailAccount();
+    if (!res.ok && res.error) {
+      setUploadError(res.error);
+    }
+  };
+
+  const handleFetchFromGmail = async () => {
+    setUploadError(null);
+    setGmailSyncReport(null);
+    setIsSyncingGmail(true);
+    const res = await syncFromGmailInbox(gmailFilter, false);
+    setIsSyncingGmail(false);
+    if (!res.ok) {
+      setUploadError(res.error || 'Could not fetch Gmail messages.');
+      return;
+    }
+    setGmailSyncReport({
+      scannedEmails: res.scannedEmails || 0,
+      importedCount: res.importedCount || 0,
+      duplicatesSkipped: res.duplicatesSkipped || 0,
+      smartAlerts:
+        (res.refundsFound || 0) + (res.warrantiesFound || 0) + (res.priceAlertsFound || 0),
+    });
+    onImportComplete([], selectedAccountId);
+  };
 
   const handleFileSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -94,9 +138,7 @@ export const StatementUploadModal: React.FC<Props> = ({
       }
 
       if (combinedTxs.length === 0) {
-        setUploadError(
-          'No structured UPI or bank rows found. Upload a UPI Statement (.PDF or .CSV) with columns: Date & time | Transaction details (Paid to / Received from / Self transfer + UPI Transaction ID + Paid by Bank) | Amount.'
-        );
+        setUploadError('No valid statement rows found in the selected file.');
         setParsedResult(null);
       } else {
         setParsedResult({
@@ -105,14 +147,11 @@ export const StatementUploadModal: React.FC<Props> = ({
           totalCredits,
           totalDebits,
           totalSelfTransfers,
-          dateRange: 'Extracted Statement Period',
+          dateRange: 'Statement Period',
           transactions: combinedTxs,
           discoveredAccounts: Array.from(accountsMap.values()),
           duplicatesRemoved,
-          parsingNotes: [
-            `Parsed ${files.length} statement file(s): ${bankLabels.join(', ')}`,
-            'Deduplicated by 12-digit UPI Transaction ID & separated Self Transfers',
-          ],
+          parsingNotes: [],
         });
       }
     } catch (err: any) {
@@ -123,71 +162,19 @@ export const StatementUploadModal: React.FC<Props> = ({
     }
   };
 
-  const handleDownloadSampleCsv = () => {
-    const csv = SAMPLE_STATEMENTS[0].csv;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'UPI_Transaction_Statement_Apr2026.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadSamplePdf = () => {
-    const blob = buildSamplePdfBlob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'UPI_Transaction_Statement_Apr2026.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleSelectSample = (csvText: string, acctId?: string) => {
+  const handleParseSms = () => {
+    if (!smsText.trim()) return;
     setUploadError(null);
     setImportSummary(null);
-    const targetAcc = acctId || selectedAccountId;
-    setSelectedAccountId(targetAcc);
-    const result = parseOfflineStatementCSV(csvText, targetAcc);
-    setParsedResult(result);
+    const result = parseSmsTextAlert(smsText, selectedAccountId);
+    if (result.transactions.length === 0) {
+      setUploadError('No valid transaction or expense amounts found in text/SMS.');
+    } else {
+      setParsedResult(result);
+    }
   };
 
-  const handleParseCustom = () => {
-    if (!customCsv.trim()) return;
-    setUploadError(null);
-    setImportSummary(null);
-    const result = parseOfflineStatementCSV(customCsv, selectedAccountId);
-    setParsedResult(result);
-  };
 
-  const handleSimulateSMS = () => {
-    setUploadError(null);
-    setImportSummary(null);
-    const upiSmsData = `01 Apr, 2026 11:36 AM
-Paid to SHRI SHAMRAO PATIL YADRAVKAR EDUCATIONAL AND CHARITABLE TRUST
-UPI Transaction ID: 645776339229
-Paid by India Post Payment Bank 0262
-₹50
-
-01 Apr, 2026 12:59 PM
-Received from Ananya Potadar
-UPI Transaction ID: 645713846834
-Paid to Bank of India 3628
-₹100
-
-01 Apr, 2026 04:50 PM
-Self transfer to India Post Payment Bank 0262
-UPI Transaction ID: 645750350390
-Paid by HDFC Bank 1442
-₹700`;
-    const result = parseOfflineStatementCSV(upiSmsData, selectedAccountId);
-    setParsedResult(result);
-  };
 
   const handleConfirmImport = async () => {
     if (!parsedResult || parsedResult.transactions.length === 0) return;
@@ -204,7 +191,7 @@ Paid by HDFC Bank 1442
       setParsedResult(null);
       setCustomCsv('');
       onClose();
-    }, 1700);
+    }, 1500);
   };
 
   return (
@@ -216,7 +203,6 @@ Paid by HDFC Bank 1442
     >
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
-          {/* Hidden native HTML file input for real UPI PDF & CSV uploads */}
           <input
             ref={fileInputRef}
             type="file"
@@ -224,54 +210,40 @@ Paid by HDFC Bank 1442
             multiple
             onChange={handleFileSelection}
             style={{ display: 'none' }}
-            aria-label="Upload UPI PDF or CSV transaction statement files"
+            aria-label="Upload PDF or CSV bank statement"
           />
 
-          {/* Header */}
+          {/* Clean Header */}
           <View style={styles.header}>
-            <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={styles.title}>Import UPI / Bank Statement (PDF & CSV)</Text>
-              <View style={styles.privacyPill}>
-                <ShieldCheck size={12} color={THEME.colors.success} />
-                <Text style={styles.privacyText}>
-                  UPI Transaction ID Deduplication • Auto-Links Multi-Bank Accounts
-                </Text>
-              </View>
-            </View>
+            <Text style={styles.title}>Sync Gmail & Statements</Text>
             <TouchableOpacity
               onPress={onClose}
               style={styles.closeBtn}
-              accessibilityLabel="Close statement upload modal"
+              accessibilityLabel="Close sync modal"
             >
               <X size={20} color={THEME.colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
-          {/* Fallback Account Selector (used when a row has no "Paid by <Bank> <4-digits>" line) */}
-          <View style={styles.accountPickerRow}>
-            <Text style={styles.accountPickerLabel}>Default Account:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.accountChipsWrap}>
-                {accounts.map((acc) => {
-                  const active = selectedAccountId === acc.id;
-                  return (
-                    <TouchableOpacity
-                      key={acc.id}
-                      style={[styles.accChip, active && styles.accChipActive]}
-                      onPress={() => setSelectedAccountId(acc.id)}
-                    >
-                      <Text style={[styles.accChipText, active && styles.accChipTextActive]}>
-                        {acc.bankName} ({acc.accountNumberMasked.slice(-4)})
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          </View>
-
-          {/* Source Tabs */}
+          {/* Source Tabs: Gmail & PDF/CSV Upload */}
           <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 'gmail' && styles.tabButtonActive]}
+              onPress={() => {
+                setActiveTab('gmail');
+                setParsedResult(null);
+                setUploadError(null);
+              }}
+            >
+              <Mail
+                size={13}
+                color={activeTab === 'gmail' ? '#FFF' : THEME.colors.textSecondary}
+              />
+              <Text style={[styles.tabText, activeTab === 'gmail' && styles.tabTextActive]}>
+                Gmail Sync
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.tabButton, activeTab === 'file' && styles.tabButtonActive]}
               onPress={() => {
@@ -285,41 +257,7 @@ Paid by HDFC Bank 1442
                 color={activeTab === 'file' ? '#FFF' : THEME.colors.textSecondary}
               />
               <Text style={[styles.tabText, activeTab === 'file' && styles.tabTextActive]}>
-                PDF / CSV
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === 'sample' && styles.tabButtonActive]}
-              onPress={() => {
-                setActiveTab('sample');
-                setParsedResult(null);
-                setUploadError(null);
-              }}
-            >
-              <Sparkles
-                size={13}
-                color={activeTab === 'sample' ? '#FFF' : THEME.colors.textSecondary}
-              />
-              <Text style={[styles.tabText, activeTab === 'sample' && styles.tabTextActive]}>
-                UPI Samples
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === 'custom' && styles.tabButtonActive]}
-              onPress={() => {
-                setActiveTab('custom');
-                setParsedResult(null);
-                setUploadError(null);
-              }}
-            >
-              <FileSpreadsheet
-                size={13}
-                color={activeTab === 'custom' ? '#FFF' : THEME.colors.textSecondary}
-              />
-              <Text style={[styles.tabText, activeTab === 'custom' && styles.tabTextActive]}>
-                Paste UPI
+                PDF / CSV Upload
               </Text>
             </TouchableOpacity>
 
@@ -331,18 +269,107 @@ Paid by HDFC Bank 1442
                 setUploadError(null);
               }}
             >
-              <MessageSquare
+              <FileText
                 size={13}
                 color={activeTab === 'sms' ? '#FFF' : THEME.colors.textSecondary}
               />
               <Text style={[styles.tabText, activeTab === 'sms' && styles.tabTextActive]}>
-                Quick Demo
+                Text / SMS Paste
               </Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.bodyScroll} showsVerticalScrollIndicator={false}>
-            {/* TAB 0: REAL UPI PDF & CSV FILE UPLOAD + ACCEPTED FORMAT SPEC */}
+            {/* TAB: DIRECT GMAIL INBOX SYNC */}
+            {activeTab === 'gmail' && (
+              <View style={styles.section}>
+                <View style={styles.dropzoneBox}>
+                  <View style={styles.dropzoneIconCircle}>
+                    <Mail size={24} color={THEME.colors.primary} />
+                  </View>
+                  <Text style={styles.dropzoneTitle}>
+                    {gmailConnected
+                      ? gmailEmail || 'Gmail Connected'
+                      : 'Fetch Bank Alerts & Receipts from Gmail'}
+                  </Text>
+
+                  {!gmailConnected ? (
+                    <View style={{ width: '100%', marginTop: 14 }}>
+                      <GoogleSignInButton
+                        onClick={handleConnectGoogle}
+                        label="Sign in with Google"
+                      />
+                    </View>
+                  ) : (
+                    <View style={{ width: '100%', marginTop: 12, gap: 10 }}>
+                      <View style={styles.formatBadgesRow}>
+                        {(
+                          [
+                            { id: 'all', label: 'All Alerts' },
+                            { id: 'receipts', label: 'Receipts' },
+                            { id: 'refunds', label: 'Refunds & Trials' },
+                          ] as const
+                        ).map((chip) => (
+                          <TouchableOpacity
+                            key={chip.id}
+                            onPress={() => setGmailFilter(chip.id)}
+                            style={[
+                              styles.formatBadge,
+                              gmailFilter === chip.id && {
+                                backgroundColor: THEME.colors.primary,
+                                borderColor: THEME.colors.primary,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.formatBadgeText,
+                                gmailFilter === chip.id && { color: '#FFF' },
+                              ]}
+                            >
+                              {chip.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.confirmImportBtn, isSyncingGmail && { opacity: 0.7 }]}
+                        onPress={handleFetchFromGmail}
+                        disabled={isSyncingGmail}
+                      >
+                        <RefreshCw size={16} color="#FFF" />
+                        <Text style={styles.confirmImportBtnText}>
+                          {isSyncingGmail ? 'Scanning Gmail with Gemini AI...' : 'Sync from Gmail Now'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => disconnectGmail()}
+                        style={{ alignSelf: 'center', paddingVertical: 4 }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: THEME.colors.textMuted }}>
+                          Disconnect Gmail
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {gmailSyncReport && (
+                  <View style={[styles.successBox, { marginTop: 10 }]}>
+                    <CheckCircle2 size={18} color={THEME.colors.success} />
+                    <Text style={styles.successText}>
+                      Scanned {gmailSyncReport.scannedEmails} emails • Imported{' '}
+                      {gmailSyncReport.importedCount} new transactions ({gmailSyncReport.duplicatesSkipped}{' '}
+                      duplicates skipped) • {gmailSyncReport.smartAlerts} Smart Radar items updated.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* TAB: FILE UPLOAD */}
             {activeTab === 'file' && (
               <View style={styles.section}>
                 <TouchableOpacity
@@ -351,186 +378,46 @@ Paid by HDFC Bank 1442
                   activeOpacity={0.85}
                 >
                   <View style={styles.dropzoneIconCircle}>
-                    <UploadCloud size={24} color={THEME.colors.primary} />
+                    <UploadCloud size={26} color={THEME.colors.primary} />
                   </View>
                   <Text style={styles.dropzoneTitle}>
-                    {isParsingFile
-                      ? 'Parsing UPI Statement Locally...'
-                      : 'Tap to Upload UPI Statement (.PDF or .CSV)'}
-                  </Text>
-                  <Text style={styles.dropzoneSub}>
-                    Accepts Google Pay / Paytm / PhonePe UPI statements (`Date & time | Transaction details | Amount`). Automatically extracts UPI Transaction IDs, Paid by / Paid to banks, and Self transfers.
+                    {isParsingFile ? 'Reading Statement...' : 'Select PDF or CSV File'}
                   </Text>
                   <View style={styles.formatBadgesRow}>
                     <View style={styles.formatBadge}>
                       <FileText size={12} color={THEME.colors.danger} />
                       <Text style={[styles.formatBadgeText, { color: THEME.colors.danger }]}>
-                        UPI .PDF Statement
+                        .PDF
                       </Text>
                     </View>
                     <View style={styles.formatBadge}>
                       <FileSpreadsheet size={12} color={THEME.colors.primary} />
-                      <Text style={styles.formatBadgeText}>UPI .CSV Statement</Text>
+                      <Text style={styles.formatBadgeText}>.CSV</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
-
-                {/* Accepted UPI Statement Table Format Preview (matches user's exact format) */}
-                <View style={styles.upiFormatGuideCard}>
-                  <Text style={styles.upiFormatGuideLabel}>
-                    Supported UPI Statement Layout (Auto-Detected):
-                  </Text>
-                  <View style={styles.upiHeaderStrip}>
-                    <Text style={[styles.upiColHdr, { width: 78 }]}>Date & time</Text>
-                    <Text style={[styles.upiColHdr, { flex: 1 }]}>Transaction details</Text>
-                    <Text style={[styles.upiColHdr, { width: 52, textAlign: 'right' }]}>Amount</Text>
-                  </View>
-
-                  <View style={styles.upiSampleRow}>
-                    <View style={{ width: 78 }}>
-                      <Text style={styles.upiSampleDate}>01 Apr, 2026</Text>
-                      <Text style={styles.upiSampleTime}>11:36 AM</Text>
-                    </View>
-                    <View style={{ flex: 1, paddingRight: 6 }}>
-                      <Text style={styles.upiSampleTitle} numberOfLines={1}>
-                        Paid to SHRI SHAMRAO PATIL YADRAVKAR...
-                      </Text>
-                      <Text style={styles.upiSampleMeta}>UPI Transaction ID: 645776339229</Text>
-                      <Text style={styles.upiSampleMeta}>Paid by India Post Payment Bank 0262</Text>
-                    </View>
-                    <Text style={styles.upiSampleAmtDebit}>₹50</Text>
-                  </View>
-
-                  <View style={styles.upiSampleRow}>
-                    <View style={{ width: 78 }}>
-                      <Text style={styles.upiSampleDate}>01 Apr, 2026</Text>
-                      <Text style={styles.upiSampleTime}>12:59 PM</Text>
-                    </View>
-                    <View style={{ flex: 1, paddingRight: 6 }}>
-                      <Text style={styles.upiSampleTitle}>Received from Ananya Potadar</Text>
-                      <Text style={styles.upiSampleMeta}>UPI Transaction ID: 645713846834</Text>
-                      <Text style={styles.upiSampleMeta}>Paid to Bank of India 3628</Text>
-                    </View>
-                    <Text style={styles.upiSampleAmtCredit}>₹100</Text>
-                  </View>
-
-                  <View style={[styles.upiSampleRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
-                    <View style={{ width: 78 }}>
-                      <Text style={styles.upiSampleDate}>01 Apr, 2026</Text>
-                      <Text style={styles.upiSampleTime}>04:50 PM</Text>
-                    </View>
-                    <View style={{ flex: 1, paddingRight: 6 }}>
-                      <Text style={styles.upiSampleTitle} numberOfLines={1}>
-                        Self transfer to India Post Payment Bank 0262
-                      </Text>
-                      <Text style={styles.upiSampleMeta}>UPI Transaction ID: 645750350390</Text>
-                      <Text style={styles.upiSampleMeta}>Paid by HDFC Bank 1442</Text>
-                    </View>
-                    <Text style={styles.upiSampleAmtDebit}>₹700</Text>
-                  </View>
-                </View>
-
-                {/* Downloadable Test UPI PDF & CSV Statements */}
-                <View style={styles.downloadRow}>
-                  <TouchableOpacity
-                    style={styles.downloadSampleBtn}
-                    onPress={handleDownloadSamplePdf}
-                  >
-                    <Download size={12} color={THEME.colors.primary} />
-                    <Text style={styles.downloadSampleText}>Download UPI Sample .PDF</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.downloadSampleBtn}
-                    onPress={handleDownloadSampleCsv}
-                  >
-                    <Download size={12} color={THEME.colors.primary} />
-                    <Text style={styles.downloadSampleText}>Download UPI Sample .CSV</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             )}
 
-            {/* TAB 1: SAMPLE UPI STATEMENTS */}
-            {activeTab === 'sample' && (
+            {/* TAB: TEXT / SMS PASTE */}
+            {activeTab === 'sms' && (
               <View style={styles.section}>
-                <Text style={styles.sectionSubtitle}>
-                  Select a multi-bank UPI statement (`Date & time | Transaction details | Amount`) to parse and merge:
-                </Text>
-
-                {SAMPLE_STATEMENTS.map((stmt) => (
-                  <TouchableOpacity
-                    key={stmt.id}
-                    style={styles.sampleCard}
-                    onPress={() => handleSelectSample(stmt.csv, stmt.accountId)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.sampleCardHeader}>
-                      <View style={styles.bankIdentity}>
-                        <View style={styles.bankIconCircle}>
-                          <Building2 size={16} color={THEME.colors.primary} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.sampleBankTitle}>{stmt.title}</Text>
-                          <Text style={styles.sampleAccountNum}>
-                            Accounts: {stmt.accountNumber} • {stmt.dateRange}
-                          </Text>
-                        </View>
-                      </View>
-                      <ArrowRight size={16} color={THEME.colors.primary} />
-                    </View>
-                    <Text style={styles.sampleSummaryText}>{stmt.summary}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* TAB 2: PASTE UPI TEXT OR CSV */}
-            {activeTab === 'custom' && (
-              <View style={styles.section}>
-                <Text style={styles.sectionSubtitle}>
-                  Paste copied rows from your UPI PDF statement (`01 Apr, 2026 ... UPI Transaction ID ... Paid by ...`) or CSV:
-                </Text>
-
                 <TextInput
                   style={styles.csvTextArea}
                   multiline
-                  numberOfLines={7}
-                  placeholder={`01 Apr, 2026 11:36 AM\nPaid to SHRI SHAMRAO PATIL YADRAVKAR EDUCATIONAL AND CHARITABLE TRUST\nUPI Transaction ID: 645776339229\nPaid by India Post Payment Bank 0262\n₹50`}
+                  numberOfLines={6}
+                  placeholder={`Paste bank SMS alerts or transaction texts here...\nExample: "Rs. 1,450 debited from A/C X9281 at Swiggy on 31-Oct-26 via UPI"`}
                   placeholderTextColor={THEME.colors.textMuted}
-                  value={customCsv}
-                  onChangeText={setCustomCsv}
+                  value={smsText}
+                  onChangeText={setSmsText}
                 />
-
                 <TouchableOpacity
-                  style={[styles.parseBtn, !customCsv.trim() && styles.parseBtnDisabled]}
-                  onPress={handleParseCustom}
-                  disabled={!customCsv.trim()}
+                  style={[styles.parseBtn, !smsText.trim() && styles.parseBtnDisabled]}
+                  onPress={handleParseSms}
+                  disabled={!smsText.trim()}
                 >
-                  <FileSpreadsheet size={16} color="#FFF" />
-                  <Text style={styles.parseBtnText}>Parse UPI Statement Locally</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* TAB 3: QUICK DEMO */}
-            {activeTab === 'sms' && (
-              <View style={styles.section}>
-                <View style={styles.smsInfoCard}>
-                  <MessageSquare size={20} color={THEME.colors.primary} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.smsCardTitle}>
-                      Instant 3-Bank UPI Statement Test (IPPB 0262 • BOI 3628 • HDFC 1442)
-                    </Text>
-                    <Text style={styles.smsCardSub}>
-                      Loads the exact 3 rows (`Paid to ... ₹50`, `Received from Ananya Potadar ₹100`, `Self transfer to India Post Payment Bank 0262 ₹700`) and auto-links all 3 bank accounts.
-                    </Text>
-                  </View>
-                </View>
-
-                <TouchableOpacity style={styles.parseBtn} onPress={handleSimulateSMS}>
-                  <Sparkles size={16} color="#FFF" />
-                  <Text style={styles.parseBtnText}>Preview Exact 3-Row UPI Statement</Text>
+                  <FileText size={16} color="#FFF" />
+                  <Text style={styles.parseBtnText}>Parse SMS Text Alerts</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -548,15 +435,6 @@ Paid by HDFC Bank 1442
                 <View style={styles.previewHeader}>
                   <View style={{ flex: 1, paddingRight: 8 }}>
                     <Text style={styles.previewTitle}>{parsedResult.bankName}</Text>
-                    {parsedResult.discoveredAccounts &&
-                      parsedResult.discoveredAccounts.length > 0 && (
-                        <Text style={styles.dedupeSubText}>
-                          Auto-detected {parsedResult.discoveredAccounts.length} bank account(s):{' '}
-                          {parsedResult.discoveredAccounts
-                            .map((a) => `${a.bankName} ${a.accountNumberMasked.slice(-4)}`)
-                            .join(' • ')}
-                        </Text>
-                      )}
                   </View>
                   <View style={styles.recordsBadge}>
                     <Text style={styles.recordsBadgeText}>
@@ -596,7 +474,7 @@ Paid by HDFC Bank 1442
                         <ArrowLeftRight size={13} color={THEME.colors.primary} />
                       </View>
                       <View>
-                        <Text style={styles.metricLabel}>Self Transfer</Text>
+                        <Text style={styles.metricLabel}>Transfer</Text>
                         <Text style={[styles.metricVal, { color: THEME.colors.primary }]}>
                           {formatINR(parsedResult.totalSelfTransfers)}
                         </Text>
@@ -605,20 +483,14 @@ Paid by HDFC Bank 1442
                   )}
                 </View>
 
-                <View style={styles.previewList}>
-                  {parsedResult.transactions.slice(0, 5).map((tx, idx) => (
+                <View style={[styles.previewList, { maxHeight: 240, overflowY: 'auto' }]} tabIndex={0} aria-label="Parsed transactions preview list">
+                  {parsedResult.transactions.slice(0, 20).map((tx, idx) => (
                     <View key={idx} style={styles.previewItem}>
                       <View style={{ flex: 1, paddingRight: 8 }}>
                         <Text style={styles.previewTxTitle} numberOfLines={1}>
                           {tx.title}
                         </Text>
-                        {tx.upiTransactionId && (
-                          <Text style={styles.previewTxMeta}>
-                            UPI Transaction ID: {tx.upiTransactionId}
-                          </Text>
-                        )}
                         <Text style={styles.previewTxMeta}>
-                          {tx.paidByOrToLine ? `${tx.paidByOrToLine} • ` : ''}
                           {tx.date} {tx.time ? `• ${tx.time}` : ''}
                         </Text>
                       </View>
@@ -640,9 +512,9 @@ Paid by HDFC Bank 1442
                       </Text>
                     </View>
                   ))}
-                  {parsedResult.transactions.length > 5 && (
+                  {parsedResult.transactions.length > 20 && (
                     <Text style={styles.moreItemsText}>
-                      +{parsedResult.transactions.length - 5} more UPI rows will be merged
+                      +{parsedResult.transactions.length - 20} more rows
                     </Text>
                   )}
                 </View>
@@ -651,11 +523,7 @@ Paid by HDFC Bank 1442
                   <View style={styles.successBox}>
                     <CheckCircle2 size={18} color={THEME.colors.success} />
                     <Text style={styles.successText}>
-                      Imported {importSummary.importedCount} row(s) •{' '}
-                      {importSummary.duplicatesSkipped} UPI duplicate(s) skipped
-                      {importSummary.newAccountsLinked
-                        ? ` • ${importSummary.newAccountsLinked} bank(s) linked!`
-                        : '!'}
+                      Imported {importSummary.importedCount} transaction(s)
                     </Text>
                   </View>
                 ) : (
@@ -666,7 +534,7 @@ Paid by HDFC Bank 1442
                   >
                     <CheckCircle2 size={18} color="#FFF" />
                     <Text style={styles.confirmImportBtnText}>
-                      Merge {parsedResult.totalRecords} UPI Transactions (Auto-Deduplicate)
+                      Import {parsedResult.totalRecords} Transactions
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -685,79 +553,34 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(23, 23, 37, 0.55)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
   modalContent: {
     backgroundColor: THEME.colors.card,
-    borderTopLeftRadius: THEME.borderRadius.xl,
-    borderTopRightRadius: THEME.borderRadius.xl,
+    borderRadius: THEME.borderRadius.xl,
     paddingHorizontal: THEME.spacing.lg,
     paddingTop: THEME.spacing.lg,
     paddingBottom: 24,
-    maxHeight: '92%',
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '85%',
     ...THEME.shadows.hover,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: THEME.spacing.sm,
+    marginBottom: THEME.spacing.md,
   },
   title: {
     fontSize: THEME.typography.sizes.base,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
   },
-  privacyPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  privacyText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: THEME.colors.success,
-  },
   closeBtn: {
     padding: 4,
-  },
-  accountPickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: THEME.spacing.sm,
-    gap: 8,
-  },
-  accountPickerLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-  },
-  accountChipsWrap: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  accChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: THEME.borderRadius.full,
-    backgroundColor: THEME.colors.background,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-  },
-  accChipActive: {
-    backgroundColor: THEME.colors.lavenderLight,
-    borderColor: THEME.colors.primary,
-  },
-  accChipText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: THEME.colors.textSecondary,
-  },
-  accChipTextActive: {
-    color: THEME.colors.primary,
-    fontWeight: '700',
   },
   tabBar: {
     flexDirection: 'row',
@@ -771,16 +594,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: THEME.borderRadius.full,
-    gap: 4,
+    gap: 5,
   },
   tabButtonActive: {
     backgroundColor: THEME.colors.primary,
     ...THEME.shadows.soft,
   },
   tabText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     color: THEME.colors.textSecondary,
   },
@@ -789,7 +612,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bodyScroll: {
-    maxHeight: 470,
+    maxHeight: 440,
   },
   section: {
     marginBottom: THEME.spacing.md,
@@ -797,33 +620,27 @@ const styles = StyleSheet.create({
   dropzoneBox: {
     backgroundColor: '#FAF9FE',
     borderRadius: THEME.borderRadius.xl,
-    padding: THEME.spacing.base,
+    paddingVertical: THEME.spacing.xl,
+    paddingHorizontal: THEME.spacing.base,
     alignItems: 'center',
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: THEME.colors.primaryLight,
   },
   dropzoneIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: THEME.colors.lavenderLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   dropzoneTitle: {
     fontSize: THEME.typography.sizes.sm,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
     textAlign: 'center',
-  },
-  dropzoneSub: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 15,
-    marginTop: 4,
   },
   formatBadgesRow: {
     flexDirection: 'row',
@@ -835,7 +652,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: THEME.colors.card,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: THEME.borderRadius.full,
     borderWidth: 1,
@@ -845,75 +662,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: THEME.colors.primary,
-  },
-  upiFormatGuideCard: {
-    marginTop: THEME.spacing.sm,
-    backgroundColor: '#FFFFFF',
-    borderRadius: THEME.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-    padding: 10,
-  },
-  upiFormatGuideLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: THEME.colors.primary,
-    marginBottom: 6,
-  },
-  upiHeaderStrip: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    paddingVertical: 5,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  upiColHdr: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#4B5563',
-  },
-  upiSampleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F0F7',
-  },
-  upiSampleDate: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: THEME.colors.textPrimary,
-  },
-  upiSampleTime: {
-    fontSize: 8,
-    color: THEME.colors.textMuted,
-    marginTop: 1,
-  },
-  upiSampleTitle: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: THEME.colors.textPrimary,
-  },
-  upiSampleMeta: {
-    fontSize: 8,
-    color: THEME.colors.textSecondary,
-    marginTop: 1,
-  },
-  upiSampleAmtDebit: {
-    width: 52,
-    textAlign: 'right',
-    fontSize: 10,
-    fontWeight: '700',
-    color: THEME.colors.textPrimary,
-  },
-  upiSampleAmtCredit: {
-    width: 52,
-    textAlign: 'right',
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#0D9F6E',
   },
   downloadRow: {
     flexDirection: 'row',
@@ -926,7 +674,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: THEME.borderRadius.md,
     backgroundColor: THEME.colors.background,
     borderWidth: 1,
@@ -936,12 +684,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: THEME.colors.primary,
-  },
-  sectionSubtitle: {
-    fontSize: 11,
-    color: THEME.colors.textSecondary,
-    marginBottom: THEME.spacing.md,
-    lineHeight: 16,
   },
   sampleCard: {
     backgroundColor: THEME.colors.background,
@@ -955,18 +697,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
   },
   bankIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     flex: 1,
   },
   bankIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: THEME.colors.lavenderLight,
     alignItems: 'center',
     justifyContent: 'center',
@@ -979,11 +720,6 @@ const styles = StyleSheet.create({
   sampleAccountNum: {
     fontSize: 10,
     color: THEME.colors.textMuted,
-  },
-  sampleSummaryText: {
-    fontSize: 10,
-    color: THEME.colors.textSecondary,
-    lineHeight: 14,
     marginTop: 2,
   },
   csvTextArea: {
@@ -1015,27 +751,6 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.xs,
     fontWeight: '700',
     color: '#FFF',
-  },
-  smsInfoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FAF5FF',
-    borderRadius: THEME.borderRadius.lg,
-    padding: THEME.spacing.md,
-    gap: THEME.spacing.md,
-    borderWidth: 1,
-    borderColor: '#E9D5FF',
-    marginBottom: THEME.spacing.md,
-  },
-  smsCardTitle: {
-    fontSize: THEME.typography.sizes.xs,
-    fontWeight: '700',
-    color: '#6B21A8',
-  },
-  smsCardSub: {
-    fontSize: 10,
-    color: '#7E22CE',
-    lineHeight: 15,
-    marginTop: 2,
   },
   errorBanner: {
     flexDirection: 'row',
@@ -1072,12 +787,6 @@ const styles = StyleSheet.create({
     fontSize: THEME.typography.sizes.sm,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
-  },
-  dedupeSubText: {
-    fontSize: 10,
-    color: THEME.colors.success,
-    fontWeight: '600',
-    marginTop: 2,
   },
   recordsBadge: {
     backgroundColor: THEME.colors.lavenderLight,
