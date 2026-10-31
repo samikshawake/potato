@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "types": ["vite/client", "node"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./*"],
+      "react-native-svg": ["./src/shims/react-native-svg.tsx"],
+      "react-native-safe-area-context": ["./src/shims/react-native-safe-area-context.tsx"],
+      "react-native": ["./src/shims/react-native.tsx"],
+      "lucide-react-native": ["./node_modules/lucide-react"],
+      "expo-router": ["./src/shims/expo-router.tsx"],
+      "expo-status-bar": ["./src/shims/expo-status-bar.tsx"]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "exclude": ["dist", "FRONTEND/node_modules", "FRONTEND/index.ts"]
+}

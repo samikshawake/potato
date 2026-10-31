@@ -1,0 +1,139 @@
+name: Build CashCompass Offline Application (Web & Capacitor Android APK)
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*', 'model-*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      model_release_tag:
+        description: 'GitHub Release tag containing finance_assistant.pte & tokenizer.model'
+        required: false
+        default: 'model-V1'
+      bundle_pte_in_apk:
+        description: 'Embed 770MB finance_assistant.pte directly inside APK assets (false = side-load / OBB)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-build-web:
+    name: Typecheck & Build Offline Web Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Run TypeScript Verification
+        run: npm run lint
+
+      - name: Build Production Offline Bundle
+        run: npm run build
+
+      - name: Upload Web Distribution Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cashcompass-web-dist
+          path: dist/
+          retention-days: 14
+
+  build-capacitor-android:
+    name: Package Capacitor Offline Android APK (with Llama Tokenizer & .pte)
+    needs: verify-and-build-web
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.model_release_tag || 'model-V1' }}
+      EXPECTED_PTE_SHA_PREFIX: 'af9401bfab2aaa0821b74f653fb2a'
+      EXPECTED_TOK_SHA_PREFIX: '82e9d31979e92ab929cd544440f12'
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Java JDK 21 (Required for Capacitor 8 & Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Node Dependencies
+        run: npm ci || npm install
+
+      - name: Download Built Web Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: cashcompass-web-dist
+          path: dist/
+
+      - name: Fetch tokenizer.model & finance_assistant.pte from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist/models
+          echo "Checking GitHub Release ${RELEASE_TAG} for model artifacts..."
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release download "${RELEASE_TAG}" -p "tokenizer.model" -D dist/models --clobber || true
+            if [ "${{ github.event.inputs.bundle_pte_in_apk }}" = "true" ]; then
+              gh release download "${RELEASE_TAG}" -p "finance_assistant.pte" -D dist/models --clobber || true
+            fi
+          else
+            echo "Release ${RELEASE_TAG} not found in current fork; skipping binary asset download (user can load locally in app)."
+          fi
+
+          if [ -f "dist/models/tokenizer.model" ]; then
+            ACTUAL_TOK_SHA=$(sha256sum dist/models/tokenizer.model | awk '{print $1}')
+            echo "Verified tokenizer.model SHA256: ${ACTUAL_TOK_SHA}"
+          fi
+          if [ -f "dist/models/finance_assistant.pte" ]; then
+            ACTUAL_PTE_SHA=$(sha256sum dist/models/finance_assistant.pte | awk '{print $1}')
+            echo "Verified finance_assistant.pte SHA256: ${ACTUAL_PTE_SHA}"
+          fi
+
+      - name: Initialize & Sync Capacitor Android Platform
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      - name: Configure Android Manifest for High-Speed On-Device .pte Memory Mapping
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ] && ! grep -q "android:largeHeap" "$MANIFEST"; then
+            sed -i 's/<application/<application android:largeHeap="true" android:hardwareAccelerated="true"/' "$MANIFEST"
+          fi
+
+      - name: Build Debug & Unsigned Release APK via Gradle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload CashCompass Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CashCompass-Offline-Android-APK
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30

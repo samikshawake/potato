@@ -1,0 +1,18 @@
+{
+  "name": "CashCompass",
+  "displayName": "CashCompass Offline Finance",
+  "version": "1.0.0",
+  "bundleId": "com.cashcompass.finance",
+  "offlineOnly": true,
+  "modelRuntime": {
+    "engine": "ExecuTorch-XNNPACK-INT4",
+    "modelAsset": "models/finance_assistant.pte",
+    "modelSha256": "af9401bfab2aaa0821b74f653fb2a",
+    "modelSizeMB": 770,
+    "tokenizerAsset": "models/tokenizer.model",
+    "tokenizerSha256": "82e9d31979e92ab929cd544440f12",
+    "tokenizerSizeMB": 2.08,
+    "kvCacheMaxSeqLen": 2048,
+    "speculativeDraftTokens": 4
+  }
+}
