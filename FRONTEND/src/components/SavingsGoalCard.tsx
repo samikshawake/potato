@@ -1,15 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Laptop, Shield, Compass, Sparkles, Plus } from 'lucide-react-native';
+import { Laptop, Shield, Compass, Sparkles } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import { SavingsGoal } from '../types/finance';
 
 interface Props {
   goal: SavingsGoal;
-  onPressAddMoney?: () => void;
 }
 
-export const SavingsGoalCard: React.FC<Props> = ({ goal, onPressAddMoney }) => {
+export const SavingsGoalCard: React.FC<Props> = ({ goal }) => {
   const percentage = Math.min(
     100,
     Math.round((goal.currentAmount / goal.targetAmount) * 100)
@@ -53,15 +52,10 @@ export const SavingsGoalCard: React.FC<Props> = ({ goal, onPressAddMoney }) => {
         <Text style={styles.targetDateText}>
           Target: {goal.deadlineDate} • +{formatINR(goal.monthlyContribution)}/mo
         </Text>
-        {onPressAddMoney && (
-          <TouchableOpacity
-            style={styles.addMoneyBtn}
-            onPress={onPressAddMoney}
-            activeOpacity={0.7}
-          >
-            <Plus size={12} color={THEME.colors.primary} />
-            <Text style={styles.addMoneyText}>Add</Text>
-          </TouchableOpacity>
+        {goal.lockedUntilDate && (
+           <Text style={styles.lockDateText}>
+             Locked until: {goal.lockedUntilDate}
+           </Text>
         )}
       </View>
     </View>
@@ -141,18 +135,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: THEME.colors.textMuted,
   },
-  addMoneyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: THEME.colors.lavenderLight,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: THEME.borderRadius.full,
-  },
-  addMoneyText: {
+  lockDateText: {
     fontSize: 10,
     fontWeight: '700',
-    color: THEME.colors.primary,
+    color: THEME.colors.danger,
   },
 });

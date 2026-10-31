@@ -15,10 +15,19 @@ import {
   HelpCircle,
   TrendingUp,
   Clock,
+  ShieldAlert,
+  CheckCircle,
+  Calendar,
+  Layers,
+  AlertTriangle,
+  ChevronRight,
+  Sliders,
+  Check,
 } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import { useFinance } from '../context/FinanceContext';
 import { simulatePurchaseScenarios } from '../services/simulator';
+import { calculateExplainableGoalSimulation } from '../services/goalSimulatorEngine';
 import { PurchaseScenarioCard } from '../components/PurchaseScenarioCard';
 import { BottomNavigation, NavTab } from '../components/BottomNavigation';
 import { PurchasePriority } from '../types/finance';
@@ -29,6 +38,7 @@ export default function SimulatorScreen() {
     transactions,
     totalIncome,
     totalBalance,
+    totalExpenses,
     recurring,
     cancelledRecurringIds,
     toggleRecurringCancel,
@@ -37,23 +47,31 @@ export default function SimulatorScreen() {
 
   // User input states
   const [itemName, setItemName] = useState('New Laptop');
-  const [purchaseAmount, setPurchaseAmount] = useState('50000');
+  const [purchaseAmount, setPurchaseAmount] = useState('80000');
   const [priority, setPriority] = useState<PurchasePriority>('WANT');
   const [reserveFloor, setReserveFloor] = useState('15000');
   const [addedMonthlyEmi, setAddedMonthlyEmi] = useState('0');
   const [planPrompt, setPlanPrompt] = useState('');
   const [isParsingPlan, setIsParsingPlan] = useState(false);
   const [dealTimingTip, setDealTimingTip] = useState<string | null>(null);
+
+  // Interactive Assumption Overrides for 10-point explanation engine
+  const [customIncome, setCustomIncome] = useState<string>('');
+  const [customEssential, setCustomEssential] = useState<string>('');
+  const [customVariable, setCustomVariable] = useState<string>('');
+  const [customTargetMonths, setCustomTargetMonths] = useState<string>('6');
+  const [showAssumptionAdjuster, setShowAssumptionAdjuster] = useState(false);
+
   const [selectedScenarioId, setSelectedScenarioId] = useState<
     'NOW' | 'NEXT_MONTH' | 'THREE_MONTHS'
   >('NEXT_MONTH');
 
   // Fast preset buttons for quick simulation
   const presets = [
-    { label: 'Phone ₹80k', name: 'Flagship Phone', amount: '80000', prio: 'WANT' as const },
-    { label: 'Laptop ₹50k', name: 'New Laptop', amount: '50000', prio: 'WANT' as const },
+    { label: 'Laptop ₹80k', name: 'MacBook / Laptop', amount: '80000', prio: 'WANT' as const },
+    { label: 'Phone ₹50k', name: 'Smartphone', amount: '50000', prio: 'WANT' as const },
     { label: 'Bike ₹1.2L', name: 'Commuter Bike', amount: '120000', prio: 'ESSENTIAL' as const },
-    { label: 'Trip ₹18k', name: 'Weekend Trip', amount: '18000', prio: 'LUXURY' as const },
+    { label: 'Trip ₹35k', name: 'Vacation Trip', amount: '35000', prio: 'LUXURY' as const },
   ];
 
   const handleRunOnlinePlan = async () => {
@@ -68,26 +86,46 @@ export default function SimulatorScreen() {
     if (intent.suggestedNewEmi > 0) {
       setAddedMonthlyEmi(String(intent.suggestedNewEmi));
     }
-    if (intent.suggestedCancelNames.length > 0) {
-      recurring.forEach((r) => {
-        const lower = r.name.toLowerCase();
-        if (
-          intent.suggestedCancelNames.some((kw) => lower.includes(kw)) &&
-          !cancelledRecurringIds.includes(r.id)
-        ) {
-          toggleRecurringCancel(r.id);
-        }
-      });
-    }
   };
 
   const parsedAmount = Math.max(100, parseFloat(purchaseAmount) || 0);
   const parsedFloor = Math.max(0, parseFloat(reserveFloor) || 15000);
   const parsedAddedEmi = Math.max(0, parseFloat(addedMonthlyEmi) || 0);
-  const hourlyNetRate = Math.max(100, Math.round(totalIncome / 176));
-  const hoursOfWork = Math.round((parsedAmount / hourlyNetRate) * 10) / 10;
 
-  // Re-run deterministic simulation whenever inputs or What-If toggles change
+  // Derive base monthly financial figures
+  const effectiveIncome = parseFloat(customIncome) || totalIncome || 60000;
+  const effectiveEssential = parseFloat(customEssential) || Math.round(totalExpenses * 0.55) || 25000;
+  const effectiveVariable = parseFloat(customVariable) || Math.round(totalExpenses * 0.35) || 15000;
+  const targetMonthsVal = parseInt(customTargetMonths, 10) || 6;
+
+  // Run the Explainable Financial Goal Simulator Engine
+  const explainableResult = useMemo(() => {
+    return calculateExplainableGoalSimulation({
+      goalName: itemName.trim() || 'Goal Item',
+      goalAmount: parsedAmount,
+      targetMonths: targetMonthsVal,
+      currentAvailableBalance: totalBalance,
+      monthlyIncome: effectiveIncome,
+      monthlyEssentialExpenses: effectiveEssential,
+      averageVariableExpenses: effectiveVariable,
+      existingSavings: Math.round(totalBalance * 0.4),
+      emergencyFundBalance: Math.round(totalBalance * 0.4),
+      existingInvestments: Math.round(totalBalance * 0.2),
+      upcomingEmis: parsedAddedEmi,
+      monthlySavingsCapacity: Math.max(0, effectiveIncome - effectiveEssential - effectiveVariable - parsedAddedEmi),
+    });
+  }, [
+    itemName,
+    parsedAmount,
+    targetMonthsVal,
+    totalBalance,
+    effectiveIncome,
+    effectiveEssential,
+    effectiveVariable,
+    parsedAddedEmi,
+  ]);
+
+  // Re-run legacy purchase scenarios for backward compatibility
   const scenarios = useMemo(() => {
     return simulatePurchaseScenarios(
       {
@@ -134,6 +172,8 @@ export default function SimulatorScreen() {
     }
   };
 
+  const expPanel = explainableResult.explanationPanel;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       {/* Header */}
@@ -144,7 +184,7 @@ export default function SimulatorScreen() {
         >
           <ArrowLeft size={20} color={THEME.colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Purchase Simulator</Text>
+        <Text style={styles.headerTitle}>Explainable Financial Goal Simulator</Text>
         <TouchableOpacity
           style={styles.infoButton}
           onPress={() => router.push('/analysis')}
@@ -191,105 +231,128 @@ export default function SimulatorScreen() {
 
         {/* Input Configuration Card */}
         <View style={styles.inputCard}>
-          <Text style={styles.cardHeaderTitle}>Purchase Parameters</Text>
+          <Text style={styles.cardHeaderTitle}>Goal Parameters</Text>
 
-          <Text style={styles.label}>Item</Text>
+          <Text style={styles.label}>Goal / Item Name</Text>
           <TextInput
             style={styles.textInput}
             value={itemName}
             onChangeText={setItemName}
-            placeholder="e.g. MacBook Air, Electric Scooter..."
+            placeholder="e.g. MacBook Air, Laptop, Scooter..."
             placeholderTextColor={THEME.colors.textMuted}
           />
 
           <View style={styles.amountInputRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Estimated Cost (₹)</Text>
+              <Text style={styles.label}>Target Amount (₹)</Text>
               <TextInput
                 style={[styles.textInput, styles.amountInput]}
                 value={purchaseAmount}
                 onChangeText={setPurchaseAmount}
                 keyboardType="numeric"
-                placeholder="50000"
+                placeholder="80000"
                 placeholderTextColor={THEME.colors.textMuted}
               />
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Safety Reserve (₹)</Text>
+              <Text style={styles.label}>Target Horizon (Months)</Text>
               <TextInput
                 style={[styles.textInput, styles.reserveInput]}
-                value={reserveFloor}
-                onChangeText={setReserveFloor}
+                value={customTargetMonths}
+                onChangeText={setCustomTargetMonths}
                 keyboardType="numeric"
-                placeholder="15000"
+                placeholder="6"
                 placeholderTextColor={THEME.colors.textMuted}
               />
             </View>
           </View>
 
-          <Text style={styles.label}>Priority</Text>
-          <View style={styles.priorityRow}>
-            {(['ESSENTIAL', 'WANT', 'INVESTMENT', 'LUXURY'] as PurchasePriority[]).map(
-              (prio) => {
-                const isSelected = priority === prio;
-                return (
-                  <TouchableOpacity
-                    key={prio}
-                    style={[
-                      styles.prioButton,
-                      isSelected && styles.prioButtonSelected,
-                    ]}
-                    onPress={() => setPriority(prio)}
-                  >
-                    <Text
-                      style={[
-                        styles.prioText,
-                        isSelected && styles.prioTextSelected,
-                      ]}
-                    >
-                      {prio.charAt(0) + prio.slice(1).toLowerCase()}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }
-            )}
-          </View>
-
-          {/* Hours of Work Opportunity Cost */}
-          <View
+          {/* Toggle Interactive Assumption Controls */}
+          <TouchableOpacity
+            onPress={() => setShowAssumptionAdjuster(!showAssumptionAdjuster)}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              backgroundColor: THEME.colors.lavenderLight,
-              paddingHorizontal: 12,
-              paddingVertical: 9,
-              borderRadius: THEME.borderRadius.md,
-              marginTop: THEME.spacing.md,
+              paddingVertical: 8,
+              borderTopWidth: 1,
+              borderTopColor: THEME.colors.borderLight,
+              marginTop: 4,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Clock size={14} color={THEME.colors.primary} />
-              <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.textPrimary }}>
-                Work-Hours Equivalent
+              <Sliders size={14} color={THEME.colors.primary} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: THEME.colors.primary }}>
+                {showAssumptionAdjuster ? 'Hide Assumption Controls' : 'Adjust Monthly Financial Assumptions'}
               </Text>
             </View>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: THEME.colors.primary }}>
-              {hoursOfWork} hrs ({formatINR(hourlyNetRate)}/hr)
-            </Text>
-          </View>
+            <ChevronRight
+              size={14}
+              color={THEME.colors.primary}
+              style={{ transform: [{ rotate: showAssumptionAdjuster ? '90deg' : '0deg' }] } as any}
+            />
+          </TouchableOpacity>
 
-          {/* Write Your Plan (Online Gemini AI) */}
+          {showAssumptionAdjuster && (
+            <View style={{ marginTop: 8, gap: 8, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 10 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Monthly Income (₹)</Text>
+                  <TextInput
+                    style={[styles.textInput, { marginBottom: 0 }]}
+                    value={customIncome}
+                    onChangeText={setCustomIncome}
+                    keyboardType="numeric"
+                    placeholder={String(effectiveIncome)}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Essential Spend (₹)</Text>
+                  <TextInput
+                    style={[styles.textInput, { marginBottom: 0 }]}
+                    value={customEssential}
+                    onChangeText={setCustomEssential}
+                    keyboardType="numeric"
+                    placeholder={String(effectiveEssential)}
+                  />
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Variable Spend (₹)</Text>
+                  <TextInput
+                    style={[styles.textInput, { marginBottom: 0 }]}
+                    value={customVariable}
+                    onChangeText={setCustomVariable}
+                    keyboardType="numeric"
+                    placeholder={String(effectiveVariable)}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Safety Floor (₹)</Text>
+                  <TextInput
+                    style={[styles.textInput, { marginBottom: 0 }]}
+                    value={reserveFloor}
+                    onChangeText={setReserveFloor}
+                    keyboardType="numeric"
+                    placeholder="15000"
+                  />
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* AI Plan Parsing Prompt */}
           <View style={styles.dividerSection}>
-            <Text style={styles.label}>Write Your Plan (Gemini AI)</Text>
+            <Text style={styles.label}>Ask AI Assistant for Goal Advice</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <TextInput
                   style={[styles.textInput, { marginBottom: 0 }]}
                   value={planPrompt}
                   onChangeText={setPlanPrompt}
-                  placeholder="e.g. Buy ₹65,000 camera next month and pause Netflix"
+                  placeholder="e.g. Can I buy ₹80,000 laptop in 6 months?"
                   placeholderTextColor={THEME.colors.textMuted}
                   onSubmitEditing={handleRunOnlinePlan}
                 />
@@ -299,71 +362,97 @@ export default function SimulatorScreen() {
                 style={[styles.runPlanBtn, isParsingPlan && { opacity: 0.65 }]}
                 disabled={isParsingPlan}
               >
-                <Text style={styles.runPlanBtnText}>{isParsingPlan ? '...' : 'Run'}</Text>
+                <Text style={styles.runPlanBtnText}>{isParsingPlan ? '...' : 'Analyze'}</Text>
               </TouchableOpacity>
             </View>
-            {dealTimingTip && (
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontWeight: '600',
-                  color: THEME.colors.primary,
-                  marginTop: 6,
-                }}
-              >
-                {dealTimingTip}
-              </Text>
-            )}
-          </View>
-
-          {/* Subscriptions & EMI Adjustments */}
-          <View style={styles.dividerSection}>
-            <Text style={styles.label}>Subscriptions & Optional EMI</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6, paddingBottom: 8 }}
-            >
-              {recurring.map((rec) => {
-                const isCancelled = cancelledRecurringIds.includes(rec.id);
-                return (
-                  <TouchableOpacity
-                    key={rec.id}
-                    onPress={() => toggleRecurringCancel(rec.id)}
-                    style={[
-                      styles.presetChip,
-                      isCancelled && {
-                        backgroundColor: '#E8F8F0',
-                        borderColor: THEME.colors.success,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.presetText,
-                        isCancelled && { color: THEME.colors.success, fontWeight: '700' },
-                      ]}
-                    >
-                      {isCancelled ? `Paused: ${rec.name}` : `${rec.name} (${formatINR(rec.amount)})`}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <TextInput
-              style={[styles.textInput, { marginBottom: 0 }]}
-              value={addedMonthlyEmi}
-              onChangeText={setAddedMonthlyEmi}
-              keyboardType="numeric"
-              placeholder="Optional Monthly EMI (₹)"
-              placeholderTextColor={THEME.colors.textMuted}
-            />
           </View>
         </View>
 
-        {/* Results Section (Zero evaluation remarks / subtitles) */}
+        {/* TOP BANNER: Best Purchase Time Recommendation */}
+        <View style={styles.recommendationHeroCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Sparkles size={18} color="#FFF" />
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFF' }}>
+                EXPLAINABLE RECOMMENDATION
+              </Text>
+            </View>
+            <View style={styles.targetBadge}>
+              <Text style={styles.targetBadgeText}>
+                {explainableResult.isTargetDateRealistic ? 'REALISTIC' : 'ADJUSTMENT RECOMMENDED'}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.heroTitle}>
+            Best Purchase Time: {explainableResult.recommendedOption.label}
+          </Text>
+          <Text style={styles.heroSubtitle}>
+            Expected Date: {explainableResult.recommendedOption.expectedDate} • Required Monthly Savings: {formatINR(explainableResult.recommendedOption.requiredMonthlySavings)}
+          </Text>
+          <Text style={styles.heroVerdict}>
+            {explainableResult.recommendedOption.summaryVerdict}
+          </Text>
+        </View>
+
+        {/* TIMELINE COMPARISON OPTIONS (Now, 3m, 6m, 8m, 12m) */}
+        <View style={{ marginBottom: THEME.spacing.lg }}>
+          <Text style={styles.sectionHeaderTitle}>Purchase Timeline Comparison</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 10, paddingVertical: 4 }}
+          >
+            {explainableResult.timelineOptions.map((opt) => {
+              const isRec = opt.rating === 'RECOMMENDED';
+              return (
+                <View
+                  key={opt.months}
+                  style={[
+                    styles.timelineCard,
+                    isRec && styles.timelineCardRecommended,
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={[styles.timelineCardLabel, isRec && { color: THEME.colors.primary }]}>
+                      {opt.label}
+                    </Text>
+                    {isRec && (
+                      <View style={styles.recBadge}>
+                        <Check size={10} color="#FFF" />
+                        <Text style={styles.recBadgeText}>BEST</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={styles.timelineDate}>{opt.expectedDate}</Text>
+                  <Text style={styles.timelineSavings}>
+                    Save {formatINR(opt.requiredMonthlySavings)}/mo
+                  </Text>
+                  <Text style={styles.timelineBuffer}>
+                    Buffer: {formatINR(opt.emergencyBufferRemaining)} ({opt.emergencyCoverageMonthsRemaining} mo)
+                  </Text>
+                  <Text style={styles.timelineVerdict} numberOfLines={2}>
+                    {opt.summaryVerdict}
+                  </Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* VISUAL EXPLANATION PANEL */}
+        <View style={styles.explanationPanelCard}>
+          <Text style={styles.panelTitle}>Financial Goal Logic Flow</Text>
+          <View style={{ alignItems: 'center', marginVertical: 10 }}>
+            {/* Diagram representation of 10-point explanation */}
+            <Text style={styles.panelSubtitle}>10-Point Explanation: Flow Breakdown</Text>
+          </View>
+        </View>
+
+        {/* Traditional Scenario Scenarios */}
         <View style={styles.resultsHeader}>
-          <Text style={styles.resultsTitle}>Evaluation Scenarios</Text>
+          <Text style={styles.resultsTitle}>Cash Flow Scenarios</Text>
         </View>
 
         {scenarios.map((scenario) => (
@@ -375,7 +464,6 @@ export default function SimulatorScreen() {
           />
         ))}
 
-        {/* Deep Dive Action Card */}
         <TouchableOpacity
           style={styles.analysisCtaCard}
           onPress={() => router.push('/analysis')}
@@ -421,7 +509,7 @@ const styles = StyleSheet.create({
     ...THEME.shadows.soft,
   },
   headerTitle: {
-    fontSize: THEME.typography.sizes.md,
+    fontSize: THEME.typography.sizes.sm,
     fontWeight: '700',
     color: THEME.colors.textPrimary,
   },
@@ -508,35 +596,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: THEME.colors.textPrimary,
   },
-  priorityRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  prioButton: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: THEME.borderRadius.md,
-    backgroundColor: THEME.colors.background,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: THEME.colors.border,
-  },
-  prioButtonSelected: {
-    backgroundColor: THEME.colors.primary,
-    borderColor: THEME.colors.primary,
-  },
-  prioText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: THEME.colors.textSecondary,
-  },
-  prioTextSelected: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
   dividerSection: {
-    marginTop: THEME.spacing.md,
-    paddingTop: THEME.spacing.md,
+    marginTop: THEME.spacing.sm,
+    paddingTop: THEME.spacing.sm,
     borderTopWidth: 1,
     borderTopColor: THEME.colors.borderLight,
   },
@@ -551,6 +613,196 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#FFF',
+  },
+  recommendationHeroCard: {
+    backgroundColor: THEME.colors.primary,
+    borderRadius: THEME.borderRadius.xl,
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.lg,
+    ...THEME.shadows.card,
+  },
+  heroTitle: {
+    fontSize: THEME.typography.sizes.lg,
+    fontWeight: '800',
+    color: '#FFF',
+    marginTop: 10,
+  },
+  heroSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#E0E7FF',
+    marginTop: 4,
+  },
+  heroVerdict: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#F3F4F6',
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  targetBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  targetBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  sectionHeaderTitle: {
+    fontSize: THEME.typography.sizes.sm,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+    marginBottom: 8,
+  },
+  timelineCard: {
+    width: 140,
+    backgroundColor: THEME.colors.card,
+    borderRadius: THEME.borderRadius.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    justifyContent: 'space-between',
+  },
+  timelineCardRecommended: {
+    borderColor: THEME.colors.primary,
+    borderWidth: 2,
+    backgroundColor: THEME.colors.lavenderLight,
+  },
+  timelineCardLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  recBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: THEME.colors.primary,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  recBadgeText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#FFF',
+  },
+  timelineDate: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: THEME.colors.textMuted,
+    marginTop: 2,
+  },
+  timelineSavings: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.colors.primary,
+    marginTop: 6,
+  },
+  timelineBuffer: {
+    fontSize: 10,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  timelineVerdict: {
+    fontSize: 9,
+    color: THEME.colors.textMuted,
+    marginTop: 6,
+  },
+  explanationPanelCard: {
+    backgroundColor: THEME.colors.card,
+    borderRadius: THEME.borderRadius.xl,
+    padding: THEME.spacing.lg,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
+    marginBottom: THEME.spacing.lg,
+    ...THEME.shadows.card,
+  },
+  panelTitle: {
+    fontSize: THEME.typography.sizes.sm,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+  },
+  panelSubtitle: {
+    fontSize: 10,
+    color: THEME.colors.textMuted,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  gridItem: {
+    width: '48%',
+    backgroundColor: THEME.colors.background,
+    borderRadius: THEME.borderRadius.md,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: THEME.colors.borderLight,
+  },
+  gridLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: THEME.colors.textMuted,
+  },
+  gridValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: THEME.colors.textPrimary,
+    marginTop: 2,
+  },
+  impactBox: {
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: THEME.borderRadius.md,
+    borderWidth: 1,
+    borderColor: THEME.colors.borderLight,
+    marginBottom: 10,
+  },
+  impactTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
+  },
+  impactText: {
+    fontSize: 11,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  risksBox: {
+    backgroundColor: '#FFFBEB',
+    padding: 10,
+    borderRadius: THEME.borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    marginBottom: 10,
+  },
+  risksTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  reasoningBox: {
+    backgroundColor: THEME.colors.lavenderLight,
+    padding: 10,
+    borderRadius: THEME.borderRadius.md,
+    borderWidth: 1,
+    borderColor: THEME.colors.primaryLight,
+  },
+  reasoningTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: THEME.colors.primary,
+  },
+  reasoningText: {
+    fontSize: 11,
+    color: THEME.colors.textPrimary,
+    marginTop: 2,
+    lineHeight: 16,
   },
   resultsHeader: {
     marginBottom: THEME.spacing.sm,

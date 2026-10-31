@@ -1,4 +1,4 @@
-export type TransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
+export type TransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'INVESTMENT';
 
 export type PaymentMethod = 'UPI' | 'NEFT' | 'IMPS' | 'ATM' | 'CARD' | 'AUTO_DEBIT';
 
@@ -12,6 +12,7 @@ export type PresetTransactionCategory =
   | 'Salary'
   | 'Pocket Money'
   | 'Investments'
+  | 'Investment'
   | 'Healthcare'
   | 'Other';
 
@@ -85,6 +86,7 @@ export interface SavingsGoal {
   targetAmount: number;
   currentAmount: number;
   deadlineDate: string;
+  lockedUntilDate?: string; // Due date for savings removal
   category: string;
   icon: string;
   isCompleted: boolean;
@@ -193,4 +195,201 @@ export interface SplitSettlementItem {
   date: string;
   status: 'PENDING' | 'SETTLED';
 }
+
+// ============================================================================
+// FEATURE 1 TYPES: Explainable Goal Simulator
+// ============================================================================
+
+export interface GoalTimelineOption {
+  months: number;
+  label: string;
+  expectedDate: string;
+  requiredMonthlySavings: number;
+  projectedSavingsAccumulated: number;
+  projectedEndingBalance: number;
+  emergencyBufferRemaining: number;
+  emergencyCoverageMonthsRemaining: number;
+  rating: 'RECOMMENDED' | 'POSSIBLE' | 'FINANCIALLY_RISKY' | 'NOT_RECOMMENDED';
+  summaryVerdict: string;
+  explanation: string;
+}
+
+export interface GoalSimulatorExplanationPanel {
+  currentAvailableBalance: number;
+  totalMonthlyIncome: number;
+  monthlyEssentialExpenses: number;
+  averageVariableExpenses: number;
+  goalAmount: number;
+  monthlySavingsCapacity: number;
+  expectedMonthsToGoal: number;
+  expectedCompletionDate: string;
+  recommendedPurchaseDate: string;
+  projectedBalanceAfterPurchase: number;
+  emergencyFundImpact: string;
+  risksAndAssumptions: string[];
+  detailedReasoning: string;
+}
+
+export interface ExplainableGoalResult {
+  goalName: string;
+  goalAmount: number;
+  monthlySavingsCapacity: number;
+  estimatedMonthsToGoal: number;
+  expectedCompletionDate: string;
+  currentSavingsProgressPct: number;
+  isTargetDateRealistic: boolean;
+  targetAssessmentText: string;
+  recommendedOption: GoalTimelineOption;
+  timelineOptions: GoalTimelineOption[];
+  explanationPanel: GoalSimulatorExplanationPanel;
+}
+
+// ============================================================================
+// FEATURE 2 TYPES: Investment Suggestions
+// ============================================================================
+
+export interface GoalSimulatorInput {
+  goalName: string;
+  goalAmount: number;
+  targetMonths?: number;
+  currentAvailableBalance?: number;
+  monthlyIncome?: number;
+  monthlyEssentialExpenses?: number;
+  averageVariableExpenses?: number;
+  existingSavings?: number;
+  emergencyFundBalance?: number;
+  existingInvestments?: number;
+  upcomingEmis?: number;
+  monthlySavingsCapacity?: number;
+  customEmergencyReserveFloor?: number;
+}
+
+export type InvestmentRiskLevel = 'Low' | 'Low to Moderate' | 'Moderate' | 'Moderate to High' | 'High' | 'Very High';
+
+export interface InvestmentProduct {
+  id: string;
+  name: string;
+  category: 'LOW_RISK' | 'HIGH_RISK';
+  productType:
+    | 'FD'
+    | 'RD'
+    | 'FIXED_SAVINGS'
+    | 'BONDS'
+    | 'DEBT_FUNDS'
+    | 'EMERGENCY_SAVINGS'
+    | 'MUTUAL_FUNDS'
+    | 'EQUITY_MF'
+    | 'INDEX_FUNDS'
+    | 'STOCKS'
+    | 'ETFS';
+  minInvestmentAmount: number;
+  duration: string;
+  expectedReturnRate: string;
+  liquidity: string;
+  lockInPeriod: string;
+  riskLevel: InvestmentRiskLevel;
+  riskPercentageOrVolatility: string;
+  taxConsiderations: string;
+  pros: string[];
+  cons: string[];
+  importantWarnings: string[];
+  verifiedDataSource: string;
+  lastUpdatedDate: string;
+}
+
+export interface InvestmentSuggestionAnalysis {
+  enteredAmount: number;
+  actualInvestableCapacity: number;
+  emergencyFundStatus: {
+    current: number;
+    target: number;
+    adequacyPct: number;
+    isFullyFunded: boolean;
+    recommendedEmergencyTopUp: number;
+  };
+  eligibleLowRiskProducts: InvestmentProduct[];
+  eligibleHighRiskProducts: InvestmentProduct[];
+  personalizedRecommendation: {
+    suggestedLowRiskAlloc: number;
+    suggestedHighRiskAlloc: number;
+    topCategorySuggestion: string;
+    reasoning: string;
+    downsideRiskExplanation: string;
+    prioritizeEmergencyOrDebtFirstNote: string | null;
+  };
+}
+
+// ============================================================================
+// FEATURE 3 TYPES: Separate Financial Allocation Compartments
+// ============================================================================
+
+export interface CompartmentsState {
+  // Emergency Fund Compartment
+  emergencyFundBalance: number;
+  emergencyTargetMonths: 3 | 6 | 12;
+  monthlyEssentialExpenses: number;
+  emergencyTargetAmount: number;
+  emergencyCoverageMonths: number;
+  emergencyRemainingRequired: number;
+  emergencyProgressPct: number;
+
+  // Investment Compartment
+  investmentTotal: number;
+  monthlyInvestmentCapacity: number;
+  investmentAmountAlreadyInvested: number;
+  investmentAvailableNew: number;
+  investmentLowRiskAlloc: number;
+  investmentHighRiskAlloc: number;
+
+  // Savings Compartment
+  savingsTotal: number;
+  monthlySavings: number;
+  savingsTarget: number;
+  savingsRemainingTarget: number;
+  savingsProgressPct: number;
+  estimatedMonthsToSavingsTarget: number;
+
+  // Distribution Overview
+  totalAvailableCash: number;
+  reservedForEmergency: number;
+  allocatedToInvestments: number;
+  reservedForSavings: number;
+  unallocatedDiscretionaryBalance: number;
+}
+
+// ============================================================================
+// FEATURE 4 TYPES: Daily Bill Collision Warnings & Safe-to-Spend
+// ============================================================================
+
+export interface DailyBillCollisionAlert {
+  id: string;
+  startDate: string;
+  endDate: string;
+  affectedDaysCount: number;
+  totalCommitmentsAmount: number;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  warningMessage: string;
+  itemizedCommitments: {
+    date: string;
+    name: string;
+    amount: number;
+    category: string;
+  }[];
+}
+
+export interface DailySafeToSpendItem {
+  date: string; // YYYY-MM-DD
+  dayOfWeek: string; // Mon, Tue...
+  openingBalance: number;
+  expectedIncome: number;
+  billsDueAmount: number;
+  billsDueItems: { name: string; amount: number; category?: string }[];
+  estimatedEssentialExpenses: number;
+  protectedSafetyBuffer: number;
+  expectedClosingBalance: number;
+  safeToSpendAmount: number;
+  status: 'SAFE' | 'CAUTION' | 'BILL_DUE' | 'OVERDRAFT_RISK';
+  explanation: string;
+}
+
 

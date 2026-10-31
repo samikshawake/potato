@@ -15,8 +15,9 @@ export interface CategorySpendingSummary {
  * leverage full multi-month history.
  */
 export const getLatestMonthTransactions = (transactions: Transaction[]): Transaction[] => {
-  if (transactions.length === 0) return [];
-  const validMonths = transactions
+  const safeList = Array.isArray(transactions) ? transactions : [];
+  if (safeList.length === 0) return [];
+  const validMonths = safeList
     .map((tx) => tx.date.slice(0, 7))
     .filter((ym) => /^\d{4}-\d{2}$/.test(ym))
     .sort();

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test": "tsx tests/financialEngines.test.ts",
     "cap:sync": "vite build && cap sync android",
     "cap:android": "cap open android"
   },

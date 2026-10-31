@@ -27,6 +27,7 @@ export const DEFAULT_EXPENSE_CATEGORIES: PresetTransactionCategory[] = [
   'Bills',
   'Entertainment',
   'Healthcare',
+  'Investment',
   'Investments',
   'Other',
 ];
@@ -39,6 +40,7 @@ export const DEFAULT_ALL_CATEGORIES: PresetTransactionCategory[] = [
   'Bills',
   'Entertainment',
   'Healthcare',
+  'Investment',
   'Investments',
   'Salary',
   'Pocket Money',
@@ -93,6 +95,12 @@ export const CATEGORIES_META: Record<string, CategoryMeta> = {
     color: '#10B981',
     iconName: 'briefcase',
     isEssential: false,
+  },
+  Investment: {
+    name: 'Investment',
+    color: '#10B981',
+    iconName: 'trending-up',
+    isEssential: true,
   },
   Investments: {
     name: 'Investments',

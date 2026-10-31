@@ -5,6 +5,7 @@ import type { Transaction, RecurringPayment } from '../types/finance.ts';
  * (e.g. rent, bills, subscriptions, EMIs)
  */
 export const detectRecurringPayments = (transactions: Transaction[]): RecurringPayment[] => {
+  const safeTx = Array.isArray(transactions) ? transactions : [];
   // Built-in recurring identification based on transaction attributes and recurring indicators
   const recurringKeywords = [
     { pattern: /rent/i, name: 'House Rent (Indiranagar)', category: 'Rent' as const, freq: 'MONTHLY' as const, isAuto: false },
@@ -19,7 +20,7 @@ export const detectRecurringPayments = (transactions: Transaction[]): RecurringP
 
   recurringKeywords.forEach((rule, idx) => {
     // Find matching transactions in history
-    const matches = transactions.filter(
+    const matches = safeTx.filter(
       (tx) => tx.type === 'EXPENSE' && (rule.pattern.test(tx.title) || rule.pattern.test(tx.merchant || ''))
     );
 

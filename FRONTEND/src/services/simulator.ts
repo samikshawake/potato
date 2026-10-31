@@ -56,7 +56,8 @@ export function analyzeMultiMonthDiagnostics(
 
   const currentYear = 2026;
 
-  for (const tx of transactions) {
+  const safeTxList = Array.isArray(transactions) ? transactions : [];
+  for (const tx of safeTxList) {
     const ym = tx.date.slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(ym)) continue;
     const txYear = parseInt(ym.slice(0, 4), 10);

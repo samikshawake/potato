@@ -39,6 +39,7 @@ export const THEME = {
       Bills: '#4D96FF',       // Sky blue
       Entertainment: '#FF6492',// Coral rose
       Investments: '#10B981', // Emerald
+      Investment: '#10B981',  // Emerald
       Healthcare: '#06B6D4',  // Cyan
       Salary: '#22C55E',      // Green
       Other: '#9CA3AF',       // Neutral gray

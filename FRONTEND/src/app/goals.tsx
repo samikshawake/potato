@@ -211,7 +211,6 @@ export default function GoalsScreen() {
           <SavingsGoalCard
             key={goal.id}
             goal={goal}
-            onPressAddMoney={() => contributeToGoal(goal.id, 2000)}
           />
         ))}
 

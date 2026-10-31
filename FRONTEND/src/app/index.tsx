@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,10 @@ import {
   X,
   Mail,
   Sparkles,
+  TrendingUp,
+  Shield,
+  Briefcase,
+  PieChart,
 } from 'lucide-react-native';
 import { THEME, formatINR } from '../constants/theme';
 import { useFinance } from '../context/FinanceContext';
@@ -29,9 +33,12 @@ import { SpendingDonutChart } from '../components/SpendingDonutChart';
 import { InsightCard } from '../components/InsightCard';
 import { TransactionItem } from '../components/TransactionItem';
 import { SavingsGoalCard } from '../components/SavingsGoalCard';
+import { FinancialAllocationCompartments } from '../components/FinancialAllocationCompartments';
 import { StatementUploadModal } from '../components/StatementUploadModal';
 import { BottomNavigation, NavTab } from '../components/BottomNavigation';
 import { Transaction, TransactionCategory, PaymentMethod } from '../types/finance';
+
+import { calculateCompartmentsState } from '../services/compartmentsEngine';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -49,6 +56,7 @@ export default function HomeScreen() {
     categorySpending,
     availableCategories,
     insights,
+    recurring,
     totalRecurringMonthly,
     lastCategoryPropagationNotice,
     clearCategoryNotice,
@@ -58,8 +66,6 @@ export default function HomeScreen() {
     addCustomCategory,
     contributeToGoal,
     gmailConnected,
-    refundItems,
-    priceCreepAlerts,
   } = useFinance();
 
   const [activeBalanceTab, setActiveBalanceTab] = useState<'Overview' | 'Transactions' | 'Goals'>('Overview');
@@ -72,10 +78,28 @@ export default function HomeScreen() {
   const [newTitle, setNewTitle] = useState('');
   const [newAmount, setNewAmount] = useState('');
   const [newCategory, setNewCategory] = useState<TransactionCategory>('Food');
-  const [newType, setNewType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
+  const [newType, setNewType] = useState<'EXPENSE' | 'INCOME' | 'TRANSFER' | 'INVESTMENT'>('EXPENSE');
   const [newPaymentMethod] = useState<PaymentMethod>('UPI');
   const [addingCustomCat, setAddingCustomCat] = useState(false);
   const [customCatInput, setCustomCatInput] = useState('');
+
+  // Feature 3: Calculate Separate Allocation Compartments State
+  const monthlyEssentialExpenses = useMemo(() => {
+    const essentialSpent = transactions
+      .filter((t) => t.type === 'EXPENSE' && (t.category === 'Rent' || t.category === 'Bills' || t.category === 'Healthcare' || t.category === 'Food'))
+      .reduce((sum, t) => sum + t.amount, 0);
+    return essentialSpent > 0 ? essentialSpent : Math.round((totalExpenses || 25000) * 0.6);
+  }, [transactions, totalExpenses]);
+
+  const compartmentsState = useMemo(() => {
+    return calculateCompartmentsState(
+      totalBalance,
+      totalIncome || 60000,
+      monthlyEssentialExpenses,
+      goals,
+      6
+    );
+  }, [totalBalance, totalIncome, monthlyEssentialExpenses, goals]);
 
   const handleCreateTransaction = () => {
     const parsedAmount = parseFloat(newAmount);
@@ -151,7 +175,7 @@ export default function HomeScreen() {
           onSaveIncome={updateIncomeConfig}
         />
 
-        {/* Total Balance Shown Below */}
+        {/* Total Balance Card */}
         <BalanceCard
           balance={totalBalance}
           accounts={accounts}
@@ -163,7 +187,17 @@ export default function HomeScreen() {
           }}
         />
 
-        {/* Direct Gmail Sync & Statement Card (Clean, zero comments below) */}
+        {/* FEATURE 3: SEPARATE FINANCIAL ALLOCATION COMPARTMENTS (Emergency, Investment, Savings) */}
+        <View style={{ paddingHorizontal: THEME.spacing.lg, marginTop: THEME.spacing.md }}>
+          <FinancialAllocationCompartments
+            compartments={compartmentsState}
+            onUpdateEmergencyTarget={(_months) => {}}
+            onNavigateInvestments={() => router.push('/investments')}
+            onNavigateSavings={() => router.push('/goals')}
+          />
+        </View>
+
+        {/* Direct Gmail Sync & Statement Card */}
         <View style={styles.uploadCardContainer}>
           <TouchableOpacity
             style={styles.uploadHeroCard}
@@ -209,23 +243,35 @@ export default function HomeScreen() {
             </Text>
           </TouchableOpacity>
 
+          {/* FEATURE 2 ROUTE: Investment Suggestions */}
           <TouchableOpacity
             style={styles.shortcutCard}
-            onPress={() => router.push('/smart-radar')}
+            onPress={() => router.push('/investments')}
             activeOpacity={0.8}
           >
             <View style={[styles.shortcutIcon, { backgroundColor: '#FEF6EC' }]}>
-              <Sparkles size={18} color={THEME.colors.warning} />
+              <Briefcase size={18} color="#D97706" />
             </View>
-            <Text style={styles.shortcutTitle}>Smart Radar</Text>
+            <Text style={styles.shortcutTitle}>Investments</Text>
             <Text style={styles.shortcutSubtitle}>
-              {refundItems.filter((r) => r.status === 'PENDING').length + priceCreepAlerts.length}{' '}
-              active
+              Suggestions
             </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={() => router.push('/analysis')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.shortcutIcon, { backgroundColor: '#E8F5E9' }]}>
+              <TrendingUp size={18} color="#10B981" />
+            </View>
+            <Text style={styles.shortcutTitle}>Evaluation</Text>
+            <Text style={styles.shortcutSubtitle}>Allocation</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Anomaly Alert Pill (if any pending) */}
+        {/* Anomaly Alert Pill */}
         {pendingAnomaliesCount > 0 && (
           <TouchableOpacity
             style={styles.anomalyBanner}
@@ -242,12 +288,12 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Spending Donut Breakdown with Interactive Category Selection */}
+        {/* Spending Donut Breakdown */}
         <SpendingDonutChart
           totalSpent={totalExpenses}
           budgetTotal={totalIncome}
           categories={categorySpending}
-          title="Spendings & Goals"
+          title="Spendings & Allocation"
           selectedCategory={selectedChartCategory}
           onSelectCategory={(cat) =>
             setSelectedChartCategory((prev) => (prev === cat ? null : cat))
@@ -280,7 +326,6 @@ export default function HomeScreen() {
             <SavingsGoalCard
               key={goal.id}
               goal={goal}
-              onPressAddMoney={() => contributeToGoal(goal.id, 1000)}
             />
           ))}
         </View>
@@ -337,6 +382,8 @@ export default function HomeScreen() {
                       styles.txDetailAmount,
                       selectedTx.type === 'INCOME'
                         ? { color: THEME.colors.success }
+                        : selectedTx.type === 'INVESTMENT' || selectedTx.category === 'Investment'
+                        ? { color: '#047857' }
                         : { color: THEME.colors.textPrimary },
                     ]}
                   >
@@ -420,7 +467,7 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* Add Transaction Modal */}
+      {/* Add Transaction Modal with Expense, Income, Investment & Transfer */}
       <Modal
         visible={showAddModal}
         transparent
@@ -443,19 +490,25 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={[
                   styles.typePill,
-                  newType === 'EXPENSE' && styles.typePillExpenseActive,
+                  newType === 'EXPENSE' && newCategory !== 'Investment' && newCategory !== 'Investments' && styles.typePillExpenseActive,
                 ]}
-                onPress={() => setNewType('EXPENSE')}
+                onPress={() => {
+                  setNewType('EXPENSE');
+                  if (newCategory === 'Investment' || newCategory === 'Investments') {
+                    setNewCategory('Food');
+                  }
+                }}
               >
                 <Text
                   style={[
                     styles.typePillText,
-                    newType === 'EXPENSE' && styles.typePillTextActive,
+                    newType === 'EXPENSE' && newCategory !== 'Investment' && newCategory !== 'Investments' && styles.typePillTextActive,
                   ]}
                 >
                   Expense
                 </Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={[
                   styles.typePill,
@@ -475,11 +528,60 @@ export default function HomeScreen() {
                   Income
                 </Text>
               </TouchableOpacity>
+
+              {/* INVESTMENT TAB */}
+              <TouchableOpacity
+                style={[
+                  styles.typePill,
+                  (newType === 'INVESTMENT' || newCategory === 'Investment' || newCategory === 'Investments') && styles.typePillInvestmentActive,
+                ]}
+                onPress={() => {
+                  setNewType('INVESTMENT');
+                  setNewCategory('Investment');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.typePillText,
+                    (newType === 'INVESTMENT' || newCategory === 'Investment' || newCategory === 'Investments') && styles.typePillTextInvestmentActive,
+                  ]}
+                >
+                  Investment
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.typePill,
+                  newType === 'TRANSFER' && styles.typePillTransferActive,
+                ]}
+                onPress={() => {
+                  setNewType('TRANSFER');
+                  setNewCategory('Other');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.typePillText,
+                    newType === 'TRANSFER' && styles.typePillTextTransferActive,
+                  ]}
+                >
+                  Transfer
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <TextInput
               style={styles.inputField}
-              placeholder="Description (e.g. Swiggy Lunch, Pocket Money)"
+              placeholder={
+                newType === 'INVESTMENT' || newCategory === 'Investment' || newCategory === 'Investments'
+                  ? 'Description (e.g. Zerodha SIP, Nifty Index, Mutual Fund)'
+                  : newType === 'TRANSFER'
+                  ? 'Description (e.g. Self Transfer, Savings Account Deposit)'
+                  : newType === 'INCOME'
+                  ? 'Description (e.g. October Salary Credit, Pocket Money)'
+                  : 'Description (e.g. Swiggy Lunch, Grocery Shopping)'
+              }
               placeholderTextColor={THEME.colors.textMuted}
               value={newTitle}
               onChangeText={setNewTitle}
@@ -487,7 +589,7 @@ export default function HomeScreen() {
 
             <TextInput
               style={styles.inputField}
-              placeholder="Amount in ₹ (e.g. 850)"
+              placeholder="Amount in ₹ (e.g. 5000)"
               placeholderTextColor={THEME.colors.textMuted}
               keyboardType="numeric"
               value={newAmount}
@@ -775,7 +877,7 @@ const styles = StyleSheet.create({
   },
   typeSelectorRow: {
     flexDirection: 'row',
-    gap: THEME.spacing.md,
+    gap: 6,
     marginBottom: THEME.spacing.md,
   },
   typePill: {
@@ -795,14 +897,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F8F0',
     borderColor: THEME.colors.success,
   },
+  typePillInvestmentActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#059669',
+  },
+  typePillTransferActive: {
+    backgroundColor: '#EDE9FE',
+    borderColor: '#7654E8',
+  },
   typePillText: {
-    fontSize: THEME.typography.sizes.xs,
+    fontSize: 11,
     fontWeight: '600',
     color: THEME.colors.textSecondary,
   },
   typePillTextActive: {
     color: THEME.colors.textPrimary,
     fontWeight: '700',
+  },
+  typePillTextInvestmentActive: {
+    color: '#047857',
+    fontWeight: '800',
+  },
+  typePillTextTransferActive: {
+    color: '#5D3BC7',
+    fontWeight: '800',
   },
   inputField: {
     backgroundColor: THEME.colors.background,
