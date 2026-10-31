@@ -35,7 +35,7 @@ jobs:
           node-version: '22'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Run TypeScript Verification
         run: npm run lint
@@ -82,7 +82,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Node Dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Download Built Web Bundle
         uses: actions/download-artifact@v4
