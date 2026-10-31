@@ -41,6 +41,11 @@ jobs:
       - name: Run TypeScript Verification
         run: npm run lint
 
+      - name: Create Production Environment File
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+
       - name: Build Production Offline Bundle
         run: npm run build
 
